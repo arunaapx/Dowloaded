@@ -1,0 +1,43 @@
+{
+  "name": "video-downloader",
+  "version": "1.0.0",
+  "description": "Desktop video downloader for YouTube, Facebook, TikTok, Instagram, and 1000+ sites. Powered by yt-dlp.",
+  "main": "main.js",
+  "scripts": {
+    "start": "node start.js",
+    "build": "electron-builder --win"
+  },
+  "keywords": [
+    "video",
+    "downloader",
+    "youtube",
+    "facebook",
+    "tiktok",
+    "yt-dlp"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.0"
+  },
+  "build": {
+    "appId": "com.local.videodownloader",
+    "productName": "Video Downloader",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin"
+      }
+    ],
+    "win": {
+      "target": "portable"
+    }
+  }
+}

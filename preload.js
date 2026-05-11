@@ -1,0 +1,21 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('api', {
+  pickFolder: () => ipcRenderer.invoke('pick-folder'),
+  defaultDownloadFolder: () => ipcRenderer.invoke('default-download-folder'),
+  openFolder: (target) => ipcRenderer.invoke('open-folder', target),
+  readClipboard: () => ipcRenderer.invoke('read-clipboard'),
+  checkBinaries: () => ipcRenderer.invoke('check-binaries'),
+  fetchInfo: (url) => ipcRenderer.invoke('fetch-info', url),
+  startDownload: (payload) => ipcRenderer.invoke('start-download', payload),
+  pauseDownload: (id) => ipcRenderer.invoke('pause-download', id),
+  resumeDownload: (id) => ipcRenderer.invoke('resume-download', id),
+  cancelDownload: (id) => ipcRenderer.invoke('cancel-download', id),
+  historyLoad: () => ipcRenderer.invoke('history-load'),
+  historySave: (list) => ipcRenderer.invoke('history-save', list),
+  windowControl: (action) => ipcRenderer.invoke('window-control', action),
+  onProgress: (cb) => ipcRenderer.on('download-progress', (_e, d) => cb(d)),
+  onLog: (cb) => ipcRenderer.on('download-log', (_e, d) => cb(d)),
+  onDone: (cb) => ipcRenderer.on('download-done', (_e, d) => cb(d)),
+  onBridgeDownload: (cb) => ipcRenderer.on('bridge-download', (_e, d) => cb(d)),
+});

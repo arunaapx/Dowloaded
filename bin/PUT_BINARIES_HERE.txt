@@ -1,0 +1,14 @@
+Place these two files in this folder:
+
+1. yt-dlp.exe   — https://github.com/yt-dlp/yt-dlp/releases/latest
+                  (download "yt-dlp.exe" from the Assets list)
+
+2. ffmpeg.exe   — https://www.gyan.dev/ffmpeg/builds/
+                  (download "ffmpeg-release-essentials.zip", extract,
+                   copy bin\ffmpeg.exe here)
+
+ffmpeg is required for:
+  - 1080p / 1440p / 4K downloads (merging video + audio streams)
+  - MP3 audio extraction
+
+If you skip ffmpeg, only single-stream formats up to ~720p will work.

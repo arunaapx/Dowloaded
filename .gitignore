@@ -1,0 +1,7 @@
+node_modules/
+dist/
+bin/yt-dlp.exe
+bin/ffmpeg.exe
+bin/*.exe
+.DS_Store
+.claude/
