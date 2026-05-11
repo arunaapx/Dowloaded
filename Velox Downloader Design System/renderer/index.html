@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; script-src 'self'" />
+  <title>Velox Downloader</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="titlebar">
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7v10l10 5 10-5V7L12 2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 10l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="title">Velox Downloader <span class="version">v2.1</span></div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-btn active" data-tab="new">New Download</button>
+      <button class="nav-btn" data-tab="library"><svg class="ico" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke="currentColor" stroke-width="1.6" fill="none"/></svg> Library</button>
+      <button class="nav-btn" data-tab="browser"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" stroke="currentColor" stroke-width="1.6" fill="none"/></svg> Browser</button>
+      <button class="nav-btn" data-tab="search"><svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg> Search</button>
+      <button class="nav-btn icon-only" id="settingsBtn" title="Settings"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" stroke="currentColor" stroke-width="1.6" fill="none"/></svg></button>
+    </nav>
+
+    <div class="theme-wrap">
+      <span class="theme-label">Theme</span>
+      <label class="switch small"><input type="checkbox" id="themeToggle" checked /><span class="slider"></span></label>
+    </div>
+  </div>
+
+  <main class="main">
+    <!-- NEW DOWNLOAD TAB -->
+    <section class="tab-pane active" data-pane="new">
+      <div class="section-header">
+        <h2 class="section-title">New Download</h2>
+        <div class="mode-switch" role="tablist" aria-label="UI mode">
+          <button class="seg-btn active" data-ui-mode="normal" type="button">Normal</button>
+          <button class="seg-btn" data-ui-mode="advanced" type="button">Advanced</button>
+        </div>
+      </div>
+
+      <div id="binWarning" class="warning hidden"></div>
+
+      <div class="card download-card">
+        <div class="url-row">
+          <button id="pasteBtn" class="icon-btn" title="Paste from clipboard">
+            <svg viewBox="0 0 24 24"><path d="M9 3h6a1 1 0 0 1 1 1v1h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2V4a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+          </button>
+          <div class="input-block">
+            <label>Paste Video URL</label>
+            <input type="text" id="urlInput" placeholder="https://www.youtube.com/watch?v=..." />
+          </div>
+        </div>
+
+        <div class="options-row">
+          <div class="mode-group">
+            <div class="mode-toggle">
+              <label class="switch"><input type="radio" name="mode" id="modeVideo" checked /><span class="slider"></span></label>
+              <span class="mode-label">Video (MP4)</span>
+            </div>
+            <div class="mode-toggle">
+              <label class="switch"><input type="radio" name="mode" id="modeAudio" /><span class="slider"></span></label>
+              <span class="mode-label">Audio (MP3)</span>
+            </div>
+          </div>
+
+          <button id="startBtn" class="primary-btn">START DOWNLOAD</button>
+        </div>
+
+        <div class="quality-row">
+          <div class="quality-group" data-group="video">
+            <button class="pill" data-quality="4k">4K</button>
+            <button class="pill adv-only" data-quality="1440p">1440p</button>
+            <button class="pill active" data-quality="1080p">1080p</button>
+            <button class="pill" data-quality="720p">720p</button>
+            <button class="pill adv-only" data-quality="480p">480p</button>
+            <button class="pill adv-only" data-quality="360p">360p</button>
+          </div>
+          <div class="quality-group hidden" data-group="audio">
+            <button class="pill" data-bitrate="320">320kbps</button>
+            <button class="pill active" data-bitrate="192">192kbps</button>
+            <button class="pill" data-bitrate="128">128kbps</button>
+          </div>
+        </div>
+
+        <div class="advanced-panel adv-only">
+          <div class="adv-block" data-group="video">
+            <div class="adv-block-title">Format &amp; codec</div>
+            <div class="adv-grid">
+              <label class="adv-field">
+                <span>Container</span>
+                <select id="vContainer">
+                  <option value="mp4" selected>MP4 (H.264 friendly)</option>
+                  <option value="mkv">MKV</option>
+                  <option value="webm">WEBM (VP9/AV1)</option>
+                </select>
+              </label>
+              <label class="adv-field">
+                <span>Video codec</span>
+                <select id="vCodec">
+                  <option value="auto" selected>Auto (best available)</option>
+                  <option value="h264">H.264 (avc1)</option>
+                  <option value="av1">AV1</option>
+                  <option value="vp9">VP9</option>
+                </select>
+              </label>
+              <label class="adv-field">
+                <span>Max video bitrate <em id="vBitrateLabel">auto</em></span>
+                <input type="range" id="vBitrate" min="0" max="20000" step="250" value="0" />
+              </label>
+            </div>
+          </div>
+
+          <div class="adv-block" data-group="audio">
+            <div class="adv-block-title">Audio</div>
+            <div class="adv-grid">
+              <label class="adv-field">
+                <span>Audio format</span>
+                <select id="aFormat">
+                  <option value="mp3" selected>MP3</option>
+                  <option value="m4a">M4A (AAC)</option>
+                  <option value="opus">OPUS</option>
+                  <option value="flac">FLAC (lossless)</option>
+                </select>
+              </label>
+              <label class="adv-field">
+                <span>Audio bitrate <em id="aBitrateLabel">192 kbps</em></span>
+                <input type="range" id="aBitrate" min="32" max="320" step="16" value="192" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="folder-row">
+          <span class="folder-label">Save to:</span>
+          <span id="folderDisplay" class="folder-path"></span>
+          <button id="browseBtn" class="ghost-btn">Change…</button>
+          <button id="openFolderBtn" class="ghost-btn" title="Open folder">📂</button>
+        </div>
+      </div>
+
+      <h2 class="section-title">Active Downloads</h2>
+      <div id="activeGrid" class="active-grid"></div>
+    </section>
+
+    <!-- LIBRARY TAB -->
+    <section class="tab-pane" data-pane="library">
+      <h2 class="section-title">Library</h2>
+      <div id="libraryList" class="library-list"></div>
+    </section>
+
+    <!-- BROWSER TAB -->
+    <section class="tab-pane" data-pane="browser">
+      <h2 class="section-title">Browser</h2>
+      <div class="placeholder">
+        <p>Built-in browser is coming in a future update.</p>
+        <p>For now, copy the video URL from your browser and paste it in <strong>New Download</strong>.</p>
+      </div>
+    </section>
+
+    <!-- SEARCH TAB -->
+    <section class="tab-pane" data-pane="search">
+      <h2 class="section-title">Search</h2>
+      <div class="placeholder">
+        <p>Cross-site search is coming in a future update.</p>
+      </div>
+    </section>
+
+    <!-- LOG -->
+    <details class="log-details">
+      <summary>Show log</summary>
+      <pre id="log"></pre>
+    </details>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

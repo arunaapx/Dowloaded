@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Velox — Toolbar Popup</title>
+<link rel="stylesheet" href="extension.css">
+<style>
+  html,body{margin:0;background:#0a0d18;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:32px;gap:24px}
+  body{font-family:var(--velox-font-sans);color:var(--velox-text)}
+  .stage{display:flex;flex-direction:column;gap:8px}
+  .stage-label{font:500 10px/1 var(--velox-font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--velox-text-faint);text-align:center}
+  .popup{border-radius:14px;border:1px solid var(--velox-stroke);box-shadow:0 24px 60px rgba(0,0,0,.55)}
+</style>
+</head>
+<body data-screen-label="Extension - Toolbar Popup">
+
+<div class="stage">
+  <div class="popup">
+    <div class="popup-header">
+      <div class="popup-logo">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7v10l10 5 10-5V7L12 2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M8 10l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="popup-brand">Velox</div>
+        <div class="popup-sub">v2.1 · Browser bridge</div>
+      </div>
+    </div>
+
+    <div class="popup-section">
+      <h4>Desktop app</h4>
+      <div class="popup-status ok"><span class="dot"></span>Connected · 127.0.0.1:7474</div>
+    </div>
+
+    <div class="popup-section">
+      <h4>This page</h4>
+      <div class="row"><span class="key">youlike.com/watch?v=…</span><span class="meta">video</span></div>
+      <div class="row"><span class="key">Default quality</span><span class="meta">1080p · MP4</span></div>
+    </div>
+
+    <div class="popup-footer">
+      <button class="primary-btn">Download this page</button>
+      <button class="ghost-btn">⚙</button>
+    </div>
+  </div>
+  <div class="stage-label">connected state</div>
+</div>
+
+<div class="stage">
+  <div class="popup">
+    <div class="popup-header">
+      <div class="popup-logo">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7v10l10 5 10-5V7L12 2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M8 10l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="popup-brand">Velox</div>
+        <div class="popup-sub">v2.1 · Browser bridge</div>
+      </div>
+    </div>
+
+    <div class="popup-section">
+      <h4>Desktop app</h4>
+      <div class="popup-status error"><span class="dot"></span>Not running — open Velox to begin</div>
+    </div>
+
+    <div class="popup-section">
+      <h4>What to do</h4>
+      <div class="row"><span class="key">1. Launch Velox Downloader</span></div>
+      <div class="row"><span class="key">2. Pin to taskbar (optional)</span></div>
+      <div class="row"><span class="key">3. Return here &amp; retry</span></div>
+    </div>
+
+    <div class="popup-footer">
+      <button class="primary-btn">Launch Velox</button>
+      <button class="ghost-btn">Retry</button>
+    </div>
+  </div>
+  <div class="stage-label">disconnected state</div>
+</div>
+
+</body></html>

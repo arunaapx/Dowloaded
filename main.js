@@ -1,14 +1,146 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const http = require('http');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 let mainWindow;
 const BRIDGE_PORT = 47813;
 
+const LICENSE_SERVER_URL =
+  process.env.LICENSE_SERVER_URL || 'https://api.example.com'; // <-- replace before shipping
+const LICENSE_BYPASS = process.env.LICENSE_BYPASS === '1';
+
 const HISTORY_PATH = () => path.join(app.getPath('userData'), 'history.json');
+const LICENSE_PATH = () => path.join(app.getPath('userData'), 'license.json');
+
+// ---------- license helpers ----------
+
+function readLicense() {
+  try {
+    if (!fs.existsSync(LICENSE_PATH())) return null;
+    return JSON.parse(fs.readFileSync(LICENSE_PATH(), 'utf-8'));
+  } catch { return null; }
+}
+function writeLicense(obj) {
+  try {
+    fs.mkdirSync(path.dirname(LICENSE_PATH()), { recursive: true });
+    fs.writeFileSync(LICENSE_PATH(), JSON.stringify(obj, null, 2));
+    return true;
+  } catch { return false; }
+}
+function clearLicense() {
+  try { fs.unlinkSync(LICENSE_PATH()); } catch {}
+}
+
+function deviceId() {
+  const lic = readLicense();
+  if (lic && lic.deviceId) return lic.deviceId;
+  // Stable per-install hash of hostname + username + a random salt persisted in userData.
+  const saltPath = path.join(app.getPath('userData'), '.device-salt');
+  let salt = '';
+  try {
+    if (fs.existsSync(saltPath)) salt = fs.readFileSync(saltPath, 'utf-8');
+    else {
+      salt = crypto.randomBytes(16).toString('hex');
+      fs.mkdirSync(path.dirname(saltPath), { recursive: true });
+      fs.writeFileSync(saltPath, salt);
+    }
+  } catch {}
+  return crypto
+    .createHash('sha256')
+    .update((os.hostname() || '') + '\n' + (os.userInfo().username || '') + '\n' + salt)
+    .digest('hex')
+    .slice(0, 32);
+}
+function deviceName() {
+  return `${os.hostname()} (${os.platform()})`;
+}
+
+function postJson(urlPath, body) {
+  return new Promise((resolve) => {
+    try {
+      const req = net.request({
+        method: 'POST',
+        url: LICENSE_SERVER_URL.replace(/\/$/, '') + urlPath,
+      });
+      req.setHeader('Content-Type', 'application/json');
+      let data = '';
+      req.on('response', (res) => {
+        res.on('data', (c) => (data += c.toString()));
+        res.on('end', () => {
+          try { resolve({ status: res.statusCode, body: JSON.parse(data || '{}') }); }
+          catch { resolve({ status: res.statusCode, body: { ok: false, error: 'parse' } }); }
+        });
+      });
+      req.on('error', (e) => resolve({ status: 0, body: { ok: false, error: e.message } }));
+      req.write(JSON.stringify(body || {}));
+      req.end();
+    } catch (e) {
+      resolve({ status: 0, body: { ok: false, error: e.message } });
+    }
+  });
+}
+
+async function licenseStatus() {
+  if (LICENSE_BYPASS) return { licensed: true, bypass: true };
+  const lic = readLicense();
+  if (!lic || !lic.token) return { licensed: false, reason: 'no-license' };
+  return { licensed: true, email: lic.email, key: lic.key };
+}
+
+async function doSignup(email) {
+  const r = await postJson('/api/signup', { email });
+  if (r.status === 200 && r.body && r.body.ok) return { ok: true, key: r.body.key };
+  return { ok: false, error: r.body?.error || `signup failed (${r.status})` };
+}
+
+async function doActivate(key) {
+  const did = deviceId();
+  const r = await postJson('/api/activate', { key, deviceId: did, deviceName: deviceName() });
+  if (r.status === 200 && r.body?.ok) {
+    writeLicense({
+      key,
+      token: r.body.token,
+      email: r.body.email || '',
+      deviceId: did,
+      activatedAt: Date.now(),
+    });
+    return { ok: true };
+  }
+  return { ok: false, error: r.body?.error || `activate failed (${r.status})` };
+}
+
+async function doHeartbeat() {
+  const lic = readLicense();
+  if (!lic || !lic.token) return { ok: false, revoked: false, reason: 'no-license' };
+  const r = await postJson('/api/heartbeat', { token: lic.token });
+  if (r.status === 200 && r.body?.ok) return { ok: true, revoked: false };
+  if (r.status === 403 && r.body?.revoked) {
+    clearLicense();
+    return { ok: false, revoked: true };
+  }
+  if (r.status === 401 || r.status === 409) {
+    // token invalid or device mismatch — force re-activation
+    clearLicense();
+    return { ok: false, revoked: false, reason: 'token-invalid' };
+  }
+  // transient (network down) — don't lock
+  return { ok: true, revoked: false, transient: true };
+}
+
+let heartbeatTimer = null;
+function startHeartbeatLoop() {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer = setInterval(async () => {
+    const r = await doHeartbeat();
+    if (r.revoked && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('license-revoked');
+    }
+  }, 30 * 60 * 1000); // 30 min
+}
 
 function resolveBinary(name) {
   const exe = process.platform === 'win32' ? `${name}.exe` : name;
@@ -37,6 +169,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
   });
   mainWindow.setMenuBarVisibility(false);
@@ -110,9 +243,22 @@ function startBridgeServer() {
   server.on('error', (e) => console.error('[bridge]', e.message));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow();
   startBridgeServer();
+
+  // Background heartbeat (every 30 min)
+  startHeartbeatLoop();
+
+  // Immediate heartbeat after window loads — if revoked, ask renderer to show lock
+  mainWindow.webContents.once('did-finish-load', async () => {
+    if (LICENSE_BYPASS) return;
+    const r = await doHeartbeat();
+    if (r.revoked && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('license-revoked');
+    }
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -140,6 +286,71 @@ ipcMain.handle('open-folder', async (_e, target) => {
     if (fs.statSync(target).isDirectory()) shell.openPath(target);
     else shell.showItemInFolder(target);
   }
+});
+
+ipcMain.handle('open-external', async (_e, url) => {
+  if (typeof url !== 'string') return;
+  if (!/^https?:\/\//i.test(url)) return;
+  shell.openExternal(url);
+});
+
+ipcMain.handle('list-extractors', async () => {
+  return new Promise((resolve) => {
+    const ytdlp = resolveBinary('yt-dlp');
+    const proc = spawn(ytdlp, ['--color', 'never', '--list-extractors'], {
+      windowsHide: true,
+      env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' },
+    });
+    let out = '', err = '';
+    proc.stdout.on('data', (d) => (out += d.toString()));
+    proc.stderr.on('data', (d) => (err += d.toString()));
+    proc.on('error', (e) => resolve({ ok: false, error: e.message }));
+    proc.on('close', (code) => {
+      if (code !== 0) return resolve({ ok: false, error: err || `yt-dlp exited ${code}` });
+      // Strip ANSI escape sequences defensively
+      const ansi = /\x1B\[[0-?]*[ -/]*[@-~]/g;
+      const list = out
+        .replace(ansi, '')
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      resolve({ ok: true, list });
+    });
+  });
+});
+
+ipcMain.handle('yt-search', async (_e, { query, limit }) => {
+  return new Promise((resolve) => {
+    const q = String(query || '').trim();
+    if (!q) return resolve({ ok: false, error: 'empty query' });
+    const n = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 25);
+    const ytdlp = resolveBinary('yt-dlp');
+    const args = ['-J', '--flat-playlist', '--no-warnings', `ytsearch${n}:${q}`];
+    const proc = spawn(ytdlp, args, { windowsHide: true });
+    let out = '', err = '';
+    proc.stdout.on('data', (d) => (out += d.toString()));
+    proc.stderr.on('data', (d) => (err += d.toString()));
+    proc.on('error', (e) => resolve({ ok: false, error: e.message }));
+    proc.on('close', (code) => {
+      if (code !== 0) return resolve({ ok: false, error: err || `yt-dlp exited ${code}` });
+      try {
+        const json = JSON.parse(out);
+        const items = (json.entries || []).map((e) => ({
+          id: e.id,
+          title: e.title || '',
+          url: e.url && /^https?:/i.test(e.url) ? e.url : `https://www.youtube.com/watch?v=${e.id}`,
+          channel: e.channel || e.uploader || '',
+          duration: e.duration || 0,
+          thumbnail: e.thumbnails && e.thumbnails.length
+            ? e.thumbnails[e.thumbnails.length - 1].url
+            : (e.thumbnail || `https://i.ytimg.com/vi/${e.id}/mqdefault.jpg`),
+        }));
+        resolve({ ok: true, items });
+      } catch (e) {
+        resolve({ ok: false, error: 'Failed to parse search results' });
+      }
+    });
+  });
 });
 
 ipcMain.handle('read-clipboard', () => {
@@ -384,6 +595,14 @@ ipcMain.handle('history-save', (_e, list) => {
     return false;
   }
 });
+
+// ---------- license IPC ----------
+
+ipcMain.handle('license-status',   () => licenseStatus());
+ipcMain.handle('license-signup',   (_e, email) => doSignup(String(email || '').trim()));
+ipcMain.handle('license-activate', (_e, key)   => doActivate(String(key || '').trim()));
+ipcMain.handle('license-clear',    () => { clearLicense(); return { ok: true }; });
+ipcMain.handle('license-heartbeat',() => doHeartbeat());
 
 ipcMain.handle('window-control', (_e, action) => {
   if (!mainWindow) return;

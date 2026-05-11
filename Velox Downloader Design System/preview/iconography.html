@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;background:#0c1220;font-family:var(--velox-font-sans);color:var(--velox-text);overflow:hidden;height:100vh}
+  body{padding:18px 22px;box-sizing:border-box;display:grid;grid-template-columns:repeat(7,1fr);gap:14px;align-items:center}
+  body::before{content:'';position:fixed;inset:0;background:radial-gradient(60% 50% at 8% 0%,rgba(108,196,255,.10),transparent 60%);pointer-events:none}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:8px;position:relative}
+  .icon{width:42px;height:42px;border-radius:10px;background:rgba(20,24,36,.85);border:1px solid rgba(255,255,255,.08);color:#98a2b3;display:grid;place-items:center}
+  .icon svg{width:22px;height:22px}
+  .nm{font:500 10px/1 var(--velox-font-mono);color:var(--velox-text-faint);text-align:center}
+</style>
+</head><body>
+  <div class="cell"><div class="icon"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7v10l10 5 10-5V7L12 2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 10l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="nm">logo</div></div>
+  <div class="cell"><div class="icon"><svg viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke="currentColor" stroke-width="1.6"/></svg></div><div class="nm">folder</div></div>
+  <div class="cell"><div class="icon"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" stroke="currentColor" stroke-width="1.6"/></svg></div><div class="nm">globe</div></div>
+  <div class="cell"><div class="icon"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.6"/></svg></div><div class="nm">search</div></div>
+  <div class="cell"><div class="icon"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" stroke="currentColor" stroke-width="1.6"/></svg></div><div class="nm">settings</div></div>
+  <div class="cell"><div class="icon"><svg viewBox="0 0 24 24" fill="none"><path d="M9 3h6a1 1 0 0 1 1 1v1h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2V4a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.6"/></svg></div><div class="nm">paste</div></div>
+  <div class="cell"><div class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg></div><div class="nm">pause</div></div>
+  <div class="cell"><div class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg></div><div class="nm">play</div></div>
+  <div class="cell"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></div><div class="nm">cancel</div></div>
+  <div class="cell"><div class="icon"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="nm">download</div></div>
+  <div class="cell"><div class="icon"><svg class="" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" stroke-dasharray="14 36" stroke-linecap="round"/></svg></div><div class="nm">spin</div></div>
+  <div class="cell"><div class="icon" style="color:#6ee7a3"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="nm">check</div></div>
+  <div class="cell"><div class="icon" style="color:#ff7a8a"><svg viewBox="0 0 24 24" fill="none"><path d="M12 4v10M12 18v.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></div><div class="nm">error</div></div>
+  <div class="cell"><div class="icon"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16v12H4z" stroke="currentColor" stroke-width="1.6"/><path d="M10 9l5 3-5 3V9z" fill="currentColor"/></svg></div><div class="nm">film</div></div>
+</body></html>

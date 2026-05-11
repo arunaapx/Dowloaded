@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;background:#0c1220;font-family:var(--velox-font-sans);color:var(--velox-text);overflow:hidden;height:100vh}
+  body{padding:18px 22px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}
+  body::before{content:'';position:fixed;inset:0;background:radial-gradient(60% 50% at 8% 0%,rgba(108,196,255,.10),transparent 60%);pointer-events:none}
+  .nav{display:flex;gap:4px;background:rgba(28,32,44,.72);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:6px;backdrop-filter:blur(20px);position:relative}
+  .nb{display:inline-flex;align-items:center;gap:6px;background:transparent;border:none;color:#98a2b3;padding:8px 14px;border-radius:8px;font:500 13px/1 var(--velox-font-sans);cursor:pointer}
+  .nb.active{background:rgba(255,255,255,.08);color:#e6ebf3;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+  .nb.hover{background:rgba(255,255,255,.06);color:#e6ebf3}
+  .nb svg{width:15px;height:15px}
+  .warning{background:linear-gradient(135deg,rgba(252,211,77,.15),rgba(252,211,77,.05));border:1px solid rgba(252,211,77,.35);color:#e6ebf3;padding:12px 16px;border-radius:10px;font:400 13px/1.55 var(--velox-font-sans);position:relative}
+  .warning code{background:rgba(0,0,0,.25);padding:1px 6px;border-radius:4px;font:400 12px/1.4 var(--velox-font-mono)}
+</style>
+</head><body>
+  <div class="nav">
+    <button class="nb active">New Download</button>
+    <button class="nb"><svg viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke="currentColor" stroke-width="1.6"/></svg> Library</button>
+    <button class="nb hover"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" stroke="currentColor" stroke-width="1.6"/></svg> Browser</button>
+    <button class="nb"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.6"/></svg> Search</button>
+  </div>
+  <div class="warning"><strong>ffmpeg not found.</strong> Required for 1080p+ and MP3. Place <code>ffmpeg.exe</code> in <code>./bin/</code>.</div>
+</body></html>

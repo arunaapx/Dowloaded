@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;background:#0c1220;font-family:var(--velox-font-sans);color:var(--velox-text);overflow:hidden;height:100vh}
+  body{padding:20px 22px;box-sizing:border-box;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  body::before{content:'';position:fixed;inset:0;background:radial-gradient(60% 50% at 8% 0%,rgba(108,196,255,.10),transparent 60%);pointer-events:none}
+  .primary-btn{background:linear-gradient(135deg,#6cc4ff,#4ea8ff);color:#0c1220;border:none;padding:12px 28px;border-radius:10px;font:700 13px/1 var(--velox-font-sans);letter-spacing:.5px;cursor:pointer;box-shadow:0 4px 16px rgba(108,196,255,.35);position:relative}
+  .primary-btn.hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(108,196,255,.5)}
+  .primary-btn.press{transform:scale(.98)}
+  .primary-btn.disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+  .ghost{background:transparent;border:1px solid rgba(255,255,255,.08);color:#98a2b3;padding:6px 12px;border-radius:8px;font:400 12px/1 var(--velox-font-sans);cursor:pointer}
+  .ghost.hover{color:#e6ebf3;border-color:rgba(255,255,255,.14)}
+  .icon-btn{width:44px;height:44px;border-radius:10px;background:rgba(20,24,36,.85);border:1px solid rgba(255,255,255,.08);color:#98a2b3;display:grid;place-items:center;cursor:pointer}
+  .icon-btn.hover{color:#6cc4ff;border-color:#6cc4ff}
+  .icon-btn svg{width:18px;height:18px}
+  .lab{font:500 10px/1 var(--velox-font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--velox-text-faint);margin-top:8px;text-align:center}
+  .stack{display:flex;flex-direction:column;align-items:center;gap:6px;position:relative}
+</style>
+</head><body>
+  <div class="stack"><button class="primary-btn">START DOWNLOAD</button><div class="lab">primary · rest</div></div>
+  <div class="stack"><button class="primary-btn hover">START DOWNLOAD</button><div class="lab">hover</div></div>
+  <div class="stack"><button class="primary-btn press">START DOWNLOAD</button><div class="lab">press</div></div>
+  <div class="stack"><button class="primary-btn disabled">START DOWNLOAD</button><div class="lab">disabled</div></div>
+  <div class="stack"><button class="ghost">Change…</button><div class="lab">ghost</div></div>
+  <div class="stack"><button class="icon-btn"><svg viewBox="0 0 24 24" fill="none"><path d="M9 3h6a1 1 0 0 1 1 1v1h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2V4a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.6"/></svg></button><div class="lab">icon-btn</div></div>
+  <div class="stack"><button class="icon-btn hover"><svg viewBox="0 0 24 24" fill="none"><path d="M9 3h6a1 1 0 0 1 1 1v1h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2V4a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.6"/></svg></button><div class="lab">icon-btn hover</div></div>
+</body></html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;background:#0c1220;font-family:var(--velox-font-sans);color:var(--velox-text);overflow:hidden;height:100vh}
+  body{padding:18px 22px;box-sizing:border-box}
+  body::before{content:'';position:fixed;inset:0;background:radial-gradient(60% 50% at 8% 0%,rgba(108,196,255,.10),transparent 60%);pointer-events:none}
+  .grid{display:grid;grid-template-columns:auto 1fr;gap:14px 22px;align-items:baseline;position:relative}
+  .num{font:500 11px/1 var(--velox-font-mono);color:var(--velox-text-faint);text-align:right}
+  .smp{font-family:var(--velox-font-sans);color:var(--velox-text)}
+  .w400{font-weight:400}
+  .w500{font-weight:500}
+  .w600{font-weight:600}
+  .w700{font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+  .w800{font-weight:800}
+  .desc{font:400 11px/1 var(--velox-font-sans);color:var(--velox-text-dim);margin-left:8px}
+</style>
+</head><body>
+  <div class="grid">
+    <div class="num">400</div><div class="smp w400" style="font-size:16px">Regular — paragraph copy<span class="desc">body</span></div>
+    <div class="num">500</div><div class="smp w500" style="font-size:16px">Medium — labels &amp; meta<span class="desc">labels, mode-label</span></div>
+    <div class="num">600</div><div class="smp w600" style="font-size:16px">Semibold — titles, active pills<span class="desc">section-title, nav.active</span></div>
+    <div class="num">700</div><div class="smp w700" style="font-size:14px">Bold — Primary CTA<span class="desc" style="letter-spacing:0">primary-btn (the only all-caps)</span></div>
+    <div class="num">800</div><div class="smp w800" style="font-size:18px">Heavy — popup logo "V"<span class="desc">extension popup glyph only</span></div>
+  </div>
+</body></html>

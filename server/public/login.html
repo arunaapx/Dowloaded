@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Velox License Admin — Sign in</title>
+  <link rel="stylesheet" href="/admin/admin.css" />
+</head>
+<body class="login-body">
+  <main class="login-shell">
+    <form class="login-card" id="loginForm" autocomplete="on">
+      <div class="login-logo">V</div>
+      <h1 class="login-title">Velox License Admin</h1>
+      <p class="login-sub">Sign in to manage license keys</p>
+
+      <label class="login-label">Username
+        <input type="text" id="loginUser" name="username" autocomplete="username" required autofocus />
+      </label>
+
+      <label class="login-label">Password
+        <input type="password" id="loginPass" name="password" autocomplete="current-password" required />
+      </label>
+
+      <button type="submit" class="btn primary login-btn" id="loginBtn">SIGN IN</button>
+      <div class="login-msg" id="loginMsg"></div>
+    </form>
+  </main>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const msg  = document.getElementById('loginMsg');
+    const btn  = document.getElementById('loginBtn');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = '';
+      msg.className = 'login-msg';
+      btn.disabled = true;
+      btn.textContent = 'SIGNING IN…';
+      try {
+        const r = await fetch('/api/admin-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            username: document.getElementById('loginUser').value,
+            password: document.getElementById('loginPass').value,
+          }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && j.ok) {
+          location.href = '/admin/';
+        } else {
+          msg.textContent = j.error || 'Invalid credentials';
+          msg.className = 'login-msg error';
+        }
+      } catch (err) {
+        msg.textContent = err.message || 'Network error';
+        msg.className = 'login-msg error';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'SIGN IN';
+      }
+    });
+  </script>
+</body>
+</html>

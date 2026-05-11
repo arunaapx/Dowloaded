@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Velox — Injected Download Pill</title>
+<link rel="stylesheet" href="extension.css">
+<style>
+  /* Mock host-page chrome (a YouTube-ish video page) */
+  html,body{margin:0;background:#1a1a1a;font-family:'Segoe UI',system-ui,sans-serif;color:#eee;min-height:100vh}
+  .yt-shell{max-width:1100px;margin:0 auto;padding:24px}
+  .yt-bar{display:flex;align-items:center;gap:14px;height:48px;border-bottom:1px solid #2c2c2c;margin-bottom:18px}
+  .yt-logo{display:inline-flex;align-items:center;gap:6px;font:700 18px/1 'Segoe UI';color:#fff}
+  .yt-logo .play{display:inline-grid;place-items:center;width:24px;height:18px;background:#ff0000;border-radius:5px;color:#fff;font-size:10px}
+  .yt-search{flex:1;max-width:560px;background:#121212;border:1px solid #2c2c2c;border-radius:24px;padding:7px 16px;color:#888;font-size:14px}
+  .yt-grid{display:grid;grid-template-columns:1fr 360px;gap:24px}
+  .yt-video{position:relative;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;display:grid;place-items:center}
+  .yt-video::before{content:'';position:absolute;inset:0;background:radial-gradient(60% 60% at 30% 30%,rgba(255,255,255,.04),transparent 60%)}
+  .yt-video .play-icon{font-size:64px;color:rgba(255,255,255,.4)}
+  .yt-title{font:600 18px/1.3 'Segoe UI';margin:16px 0 6px}
+  .yt-meta{font:400 13px/1 'Segoe UI';color:#aaa;display:flex;gap:14px}
+  .yt-side .row{display:flex;gap:10px;margin-bottom:12px}
+  .yt-side .row .t{width:140px;aspect-ratio:16/9;background:#2c2c2c;border-radius:8px;flex-shrink:0}
+  .yt-side .row .l .ttl{font:600 13px/1.3 'Segoe UI'}
+  .yt-side .row .l .ch{font:400 12px/1 'Segoe UI';color:#aaa;margin-top:6px}
+  .label-tag{position:absolute;bottom:8px;left:10px;font:500 10px/1 'Segoe UI';color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em;z-index:2}
+</style>
+</head>
+<body data-screen-label="Extension - Injected Pill">
+<div class="yt-shell">
+  <div class="yt-bar">
+    <div class="yt-logo"><span class="play">▶</span>YouLike</div>
+    <input class="yt-search" value="how to make sourdough" readonly>
+  </div>
+  <div class="yt-grid">
+    <div>
+      <div class="yt-video" id="video-1">
+        <span class="label-tag">resting</span>
+        <span class="play-icon">▶</span>
+        <div class="velox-pill-wrap" style="top:12px;right:12px">
+          <button class="velox-pill" aria-expanded="false" onclick="toggleMenu(1, event)">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Download <span class="caret">▾</span>
+          </button>
+        </div>
+      </div>
+      <div class="yt-title">Beginner sourdough — start to finish, no starter discard</div>
+      <div class="yt-meta"><span>284K views</span><span>2 weeks ago</span><span>Knead &amp; Co.</span></div>
+
+      <div class="yt-video" id="video-2" style="margin-top:24px">
+        <span class="label-tag">menu open</span>
+        <span class="play-icon">▶</span>
+        <div class="velox-pill-wrap" style="top:12px;right:12px">
+          <button class="velox-pill" aria-expanded="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Download <span class="caret">▾</span>
+          </button>
+          <div class="velox-menu">
+            <div class="group-label">Video</div>
+            <button class="item"><span class="ico">🎬</span>4K (MP4)</button>
+            <button class="item" style="background:rgba(108,196,255,.14);color:var(--velox-accent)"><span class="ico">🎬</span>1080p (MP4)</button>
+            <button class="item"><span class="ico">🎬</span>720p (MP4)</button>
+            <div class="sep"></div>
+            <div class="group-label">Audio</div>
+            <button class="item"><span class="ico">🎵</span>MP3 · 192 kbps</button>
+            <button class="item"><span class="ico">🎵</span>MP3 · 320 kbps</button>
+            <div class="sep"></div>
+            <button class="item"><span class="ico">⚙️</span>Open Velox…</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="yt-side">
+      <div class="row"><div class="t"></div><div class="l"><div class="ttl">A loaf in 24 hours — quick sourdough</div><div class="ch">Bread Lab · 1.1M views</div></div></div>
+      <div class="row"><div class="t"></div><div class="l"><div class="ttl">Why your starter isn't bubbling (3 fixes)</div><div class="ch">Knead &amp; Co. · 480K views</div></div></div>
+      <div class="row"><div class="t"></div><div class="l"><div class="ttl">Open crumb without a Dutch oven</div><div class="ch">Pane Test Kitchen · 220K</div></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="velox-toast ok"><span class="dot"></span>Sent to Velox · 1080p</div>
+
+<script>
+  function toggleMenu(idx, e) {
+    // Demonstration: not actually wiring a second menu — this kit is a static design ref.
+  }
+</script>
+</body></html>

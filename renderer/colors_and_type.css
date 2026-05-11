@@ -1,0 +1,171 @@
+/* ============================================================
+   VELOX DOWNLOADER — Foundations
+   Colors + typography tokens (dark default, light variant).
+   Pull this file into any prototype with:
+     <link rel="stylesheet" href="colors_and_type.css">
+   ============================================================ */
+
+:root {
+  /* --------- Color: brand / accent --------- */
+  --velox-accent:        #6cc4ff;  /* primary cyan / focus / link */
+  --velox-accent-2:      #4ea8ff;  /* second stop of accent gradient */
+  --velox-accent-3:      #a78bfa;  /* logo purple, used in gradient pair */
+  --velox-accent-glow:   0 0 20px rgba(108, 196, 255, 0.35);
+  --velox-grad-accent:   linear-gradient(135deg, #6cc4ff 0%, #4ea8ff 100%);
+  --velox-grad-logo:     linear-gradient(135deg, #4ea8ff 0%, #a78bfa 100%);
+  --velox-grad-bar:      linear-gradient(90deg, #6cc4ff, #4ea8ff);
+
+  /* --------- Color: surfaces (dark) --------- */
+  --velox-bg-app:        #0c1220;  /* solid app shell behind acrylic */
+  --velox-bg-card:       rgba(28, 32, 44, 0.72);
+  --velox-bg-card-2:     rgba(36, 40, 54, 0.65);
+  --velox-bg-input:      rgba(20, 24, 36, 0.85);
+  --velox-bg-pill:       rgba(255, 255, 255, 0.05);
+  --velox-bg-pill-active:rgba(108, 196, 255, 0.18);
+
+  /* --------- Color: borders --------- */
+  --velox-border:        rgba(255, 255, 255, 0.08);
+  --velox-border-strong: rgba(255, 255, 255, 0.14);
+  --velox-border-accent: rgba(108, 196, 255, 0.40);
+
+  /* --------- Color: text --------- */
+  --velox-text:          #e6ebf3;  /* primary */
+  --velox-text-dim:      #98a2b3;  /* secondary, labels */
+  --velox-text-faint:    #6b7280;  /* tertiary, placeholders */
+  --velox-text-on-accent:#0c1220;  /* dark text on cyan button */
+
+  /* --------- Color: semantic --------- */
+  --velox-success:       #6ee7a3;
+  --velox-success-2:     #22c55e;
+  --velox-danger:        #ff7a8a;
+  --velox-danger-2:      #ef4444;
+  --velox-warning:       #fcd34d;
+
+  /* --------- Shadow / elevation --------- */
+  --velox-shadow-card:   0 6px 24px rgba(0, 0, 0, 0.18);
+  --velox-shadow-menu:   0 16px 40px rgba(0, 0, 0, 0.60);
+  --velox-shadow-pill:   0 8px 22px rgba(0, 0, 0, 0.55);
+  --velox-shadow-btn:    0 4px 16px rgba(108, 196, 255, 0.35);
+  --velox-shadow-logo:   0 4px 12px rgba(78, 168, 255, 0.40);
+
+  /* --------- Blur --------- */
+  --velox-blur-card:     blur(24px);
+  --velox-blur-title:    blur(20px);
+  --velox-blur-menu:     blur(20px);
+  --velox-blur-pill:     blur(8px);
+
+  /* --------- Radius --------- */
+  --velox-r-xs:   4px;   /* badges */
+  --velox-r-sm:   6px;   /* mono pills, log */
+  --velox-r-md:   8px;   /* pills, nav, mini-icons */
+  --velox-r-lg:  10px;   /* inputs, primary btn, list rows */
+  --velox-r-xl:  14px;   /* cards, jobs */
+  --velox-r-full:999px;  /* segmented switch, switch */
+
+  /* --------- Spacing scale (loose; from observed paddings) --------- */
+  --velox-s-1: 4px;
+  --velox-s-2: 6px;
+  --velox-s-3: 8px;
+  --velox-s-4: 12px;
+  --velox-s-5: 14px;
+  --velox-s-6: 18px;
+  --velox-s-7: 22px;
+  --velox-s-8: 26px;
+
+  /* --------- Motion --------- */
+  --velox-ease:           cubic-bezier(0.2, 0, 0.2, 1);
+  --velox-dur-fast:       120ms;
+  --velox-dur-base:       150ms;
+  --velox-dur-slow:       220ms;
+
+  /* --------- Type: family --------- */
+  --velox-font-sans:  'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont,
+                       'Helvetica Neue', Arial, sans-serif;
+  --velox-font-mono:  'Consolas', 'JetBrains Mono', ui-monospace,
+                       SFMono-Regular, Menlo, monospace;
+
+  /* --------- Type: weight --------- */
+  --velox-w-regular:  400;
+  --velox-w-medium:   500;
+  --velox-w-semibold: 600;
+  --velox-w-bold:     700;
+  --velox-w-heavy:    800;
+
+  /* --------- Type: semantic --------- */
+  /* (apply as: h1 { font: var(--velox-t-h1) }) */
+  --velox-t-h1:    var(--velox-w-semibold) 22px/1.25 var(--velox-font-sans);
+  --velox-t-h2:    var(--velox-w-semibold) 18px/1.3  var(--velox-font-sans);
+  --velox-t-h3:    var(--velox-w-semibold) 15px/1.3  var(--velox-font-sans);
+  --velox-t-body:  var(--velox-w-regular)  14px/1.5  var(--velox-font-sans);
+  --velox-t-body-strong: var(--velox-w-medium) 14px/1.5 var(--velox-font-sans);
+  --velox-t-label: var(--velox-w-medium)   12px/1.4  var(--velox-font-sans);
+  --velox-t-meta:  var(--velox-w-regular)  12px/1.4  var(--velox-font-sans);
+  --velox-t-eyebrow: var(--velox-w-semibold) 12px/1 var(--velox-font-sans);
+  --velox-t-mono:  var(--velox-w-regular)  12px/1.5  var(--velox-font-mono);
+  --velox-t-btn:   var(--velox-w-bold)     13px/1    var(--velox-font-sans);
+  --velox-t-pill:  var(--velox-w-medium)   13px/1    var(--velox-font-sans);
+
+  --velox-tracking-button: 0.5px;
+  --velox-tracking-eyebrow: 0.08em;
+
+  /* --------- Aliases used by ui_kits/ (kept in sync with above) --------- */
+  --velox-bg:             var(--velox-bg-app);
+  --velox-bg-elev:        var(--velox-bg-card-2);
+  --velox-surface:        var(--velox-bg-card);
+  --velox-surface-2:      rgba(255, 255, 255, 0.06);
+  --velox-stroke:         var(--velox-border);
+  --velox-stroke-strong:  var(--velox-border-strong);
+
+  --velox-h1:             var(--velox-t-h1);
+  --velox-h2:             var(--velox-t-h2);
+  --velox-h3:             var(--velox-t-h3);
+  --velox-body:           var(--velox-t-body);
+  --velox-label:          var(--velox-t-label);
+  --velox-button:         var(--velox-t-btn);
+
+  --velox-shadow-btn-rest:  var(--velox-shadow-btn);
+  --velox-shadow-btn-hover: 0 6px 20px rgba(108, 196, 255, 0.50);
+
+  /* Light-mode targets used by ui_kits/desktop/styles.css */
+  --velox-bg-light:        #f4f6fb;
+  --velox-bg-elev-light:   rgba(248, 250, 253, 0.72);
+  --velox-surface-light:   rgba(255, 255, 255, 0.78);
+  --velox-text-light:      #1c2030;
+  --velox-stroke-light:    rgba(0, 0, 0, 0.08);
+}
+
+/* ------------------------------------------------------------
+   Light mode — toggled via <body class="light"> in the app.
+   ------------------------------------------------------------ */
+body.light, .velox-light {
+  --velox-bg-app:         #f4f6fb;
+  --velox-bg-card:        rgba(255, 255, 255, 0.78);
+  --velox-bg-card-2:      rgba(248, 250, 253, 0.72);
+  --velox-bg-input:       rgba(255, 255, 255, 0.90);
+  --velox-bg-pill:        rgba(0, 0, 0, 0.04);
+  --velox-bg-pill-active: rgba(78, 168, 255, 0.18);
+
+  --velox-border:         rgba(0, 0, 0, 0.08);
+  --velox-border-strong:  rgba(0, 0, 0, 0.14);
+
+  --velox-text:           #1c2030;
+  --velox-text-dim:       #4b5563;
+  --velox-text-faint:     #6b7280;
+}
+
+/* ------------------------------------------------------------
+   Optional global resets when you adopt the system.
+   Apply by adding class="velox" to <html> or <body>.
+   ------------------------------------------------------------ */
+.velox, .velox * { box-sizing: border-box; }
+.velox {
+  font-family: var(--velox-font-sans);
+  color: var(--velox-text);
+  background: var(--velox-bg-app);
+}
+.velox h1 { font: var(--velox-t-h1); margin: 0 0 var(--velox-s-4); }
+.velox h2 { font: var(--velox-t-h2); margin: 0 0 var(--velox-s-4); }
+.velox h3 { font: var(--velox-t-h3); margin: 0 0 var(--velox-s-3); }
+.velox p, .velox li { font: var(--velox-t-body); }
+.velox code, .velox pre { font-family: var(--velox-font-mono); font-size: 12px; }
+.velox label { font: var(--velox-t-label); color: var(--velox-text-dim); }

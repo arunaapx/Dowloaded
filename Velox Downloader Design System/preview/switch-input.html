@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;background:#0c1220;font-family:var(--velox-font-sans);color:var(--velox-text);overflow:hidden;height:100vh}
+  body{padding:20px 22px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px}
+  body::before{content:'';position:fixed;inset:0;background:radial-gradient(60% 50% at 8% 0%,rgba(108,196,255,.10),transparent 60%);pointer-events:none}
+  .row{display:flex;align-items:center;gap:14px;position:relative}
+  .lab{font:500 10px/1 var(--velox-font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--velox-text-faint);width:80px;flex-shrink:0}
+  .sw{position:relative;display:inline-block;width:40px;height:22px}
+  .sl{position:absolute;inset:0;background:rgba(120,130,150,.4);border-radius:22px}
+  .sl::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,.25)}
+  .sw.on .sl{background:linear-gradient(135deg,#6cc4ff,#4ea8ff);box-shadow:0 0 12px rgba(108,196,255,.4)}
+  .sw.on .sl::before{transform:translateX(18px)}
+  .sw.sm{width:36px;height:20px}.sw.sm .sl::before{width:14px;height:14px}.sw.sm.on .sl::before{transform:translateX(16px)}
+  .input{background:rgba(20,24,36,.85);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:11px 14px;color:#e6ebf3;font:400 14px/1 var(--velox-font-sans);width:280px}
+  .input.focus{border-color:#6cc4ff;box-shadow:0 0 0 3px rgba(108,196,255,.15)}
+  .placeholder{color:#6b7280}
+  .lbl-input{font:500 12px/1.2 var(--velox-font-sans);color:#98a2b3;display:block;margin-bottom:4px}
+</style>
+</head><body>
+  <div class="row"><div class="lab">Switch</div>
+    <span class="sw"><span class="sl"></span></span>
+    <span class="sw on"><span class="sl"></span></span>
+    <span class="sw sm"><span class="sl"></span></span>
+    <span class="sw sm on"><span class="sl"></span></span>
+    <span style="font:400 12px/1 var(--velox-font-sans);color:var(--velox-text-dim);margin-left:6px">22px and 20px variants</span>
+  </div>
+  <div class="row"><div class="lab">Input</div>
+    <div>
+      <span class="lbl-input">Paste Video URL</span>
+      <input class="input" value="https://www.youtube.com/watch?v=dQw4w9WgXcQ" readonly>
+    </div>
+    <div>
+      <span class="lbl-input">Focus</span>
+      <input class="input focus placeholder" value="" placeholder="https://…" readonly>
+    </div>
+  </div>
+</body></html>

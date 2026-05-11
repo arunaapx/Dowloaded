@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;background:#0c1220;font-family:var(--velox-font-sans);color:var(--velox-text);overflow:hidden;height:100vh}
+  body{padding:14px 18px;box-sizing:border-box;display:flex;justify-content:center;align-items:center;gap:24px}
+  body::before{content:'';position:fixed;inset:0;background:radial-gradient(60% 50% at 8% 0%,rgba(108,196,255,.10),transparent 60%);pointer-events:none}
+  /* The injected extension pill, reproduced */
+  .video{width:340px;height:190px;border-radius:10px;background:linear-gradient(135deg,#1a1f30,#080a12);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);position:relative;overflow:hidden}
+  .video::before{content:'';position:absolute;inset:0;background:radial-gradient(40% 40% at 30% 40%,rgba(255,255,255,.06),transparent)}
+  .pill-wrap{position:absolute;top:12px;right:12px;font-family:'Segoe UI',system-ui,sans-serif}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:7px 11px 7px 10px;background:linear-gradient(135deg,rgba(108,196,255,.95),rgba(78,168,255,.95));color:#0c1220;font:700 12px/1 var(--velox-font-sans);letter-spacing:.2px;border-radius:9px;box-shadow:0 8px 22px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.30) inset,0 0 24px rgba(108,196,255,.35);backdrop-filter:blur(8px)}
+  .pill svg{width:14px;height:14px}
+  .menu{position:absolute;top:calc(100% + 8px);right:0;display:flex;flex-direction:column;background:rgba(28,32,44,.98);border:1px solid rgba(255,255,255,.10);border-radius:10px;padding:5px;min-width:200px;box-shadow:0 16px 40px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.05) inset;backdrop-filter:blur(20px)}
+  .mi{display:flex;align-items:center;gap:10px;background:transparent;border:none;color:#e6ebf3;padding:8px 12px;font:500 12px/1 var(--velox-font-sans);text-align:left;border-radius:7px}
+  .mi.h{background:rgba(108,196,255,.14);color:#6cc4ff}
+  .sep{height:1px;background:rgba(255,255,255,.08);margin:4px 6px}
+  .lbl{font:500 10px/1 var(--velox-font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--velox-text-faint);position:absolute;bottom:8px;left:10px}
+</style>
+</head><body>
+  <div class="video">
+    <div class="lbl">on a YouTube page</div>
+    <div class="pill-wrap">
+      <div class="pill"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Download<span style="font-size:9px;opacity:.7">▾</span></div>
+    </div>
+  </div>
+  <div class="video">
+    <div class="lbl">menu open</div>
+    <div class="pill-wrap">
+      <div class="pill"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Download<span style="font-size:9px;opacity:.7;transform:rotate(180deg);display:inline-block">▾</span></div>
+      <div class="menu">
+        <button class="mi"><span>🎬</span>4K</button>
+        <button class="mi h"><span>🎬</span>1080p</button>
+        <button class="mi"><span>🎬</span>720p</button>
+        <div class="sep"></div>
+        <button class="mi"><span>🎵</span>MP3 · 192 kbps</button>
+      </div>
+    </div>
+  </div>
+</body></html>

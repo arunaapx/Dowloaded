@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <div class="logo">V</div>
+    <div>
+      <h1>Velox Downloader</h1>
+      <div class="sub">Browser bridge</div>
+    </div>
+  </header>
+
+  <div id="status" class="status checking">Checking app…</div>
+
+  <div class="row">
+    <label for="quality">Video quality</label>
+    <select id="quality">
+      <option value="best">Best available</option>
+      <option value="4k">4K (2160p)</option>
+      <option value="1440p">1440p</option>
+      <option value="1080p" selected>1080p</option>
+      <option value="720p">720p</option>
+      <option value="480p">480p</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label for="audioBitrate">Audio bitrate (MP3)</label>
+    <select id="audioBitrate">
+      <option value="320">320 kbps</option>
+      <option value="192" selected>192 kbps</option>
+      <option value="128">128 kbps</option>
+    </select>
+  </div>
+
+  <div class="actions">
+    <button id="dlPage" class="primary">Download this page</button>
+    <button id="dlMp3" class="secondary">As MP3</button>
+  </div>
+
+  <p class="hint">Or right-click anywhere on a page / on a video.</p>
+
+  <script src="popup.js"></script>
+</body>
+</html>

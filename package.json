@@ -15,7 +15,10 @@
     "tiktok",
     "yt-dlp"
   ],
-  "author": "",
+  "author": {
+    "name": "H A P Sarathchandra",
+    "company": "The Hard Worker Corporation"
+  },
   "license": "MIT",
   "devDependencies": {
     "cross-env": "^10.1.0",

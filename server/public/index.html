@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Velox License Admin</title>
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">V</div>
+      <div>
+        <div class="brand-title">Velox License Admin</div>
+        <div class="brand-sub">License management</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button id="refreshBtn" class="btn ghost">Refresh</button>
+      <button id="createBtn" class="btn primary">+ Create key</button>
+      <button id="logoutBtn" class="btn ghost" title="Sign out">Sign out</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="card stats">
+      <div class="stat"><div class="stat-label">Total keys</div><div id="stTotal" class="stat-value">—</div></div>
+      <div class="stat"><div class="stat-label">Active</div><div id="stActive" class="stat-value">—</div></div>
+      <div class="stat"><div class="stat-label">Revoked</div><div id="stRevoked" class="stat-value">—</div></div>
+      <div class="stat"><div class="stat-label">Unactivated</div><div id="stPending" class="stat-value">—</div></div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h2>Keys</h2>
+        <input type="text" id="filterInput" placeholder="Filter by email, key, device…" class="filter" />
+      </div>
+      <div class="table-wrap">
+        <table id="keysTable">
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Email</th>
+              <th>Device</th>
+              <th>Created</th>
+              <th>Heartbeat</th>
+              <th>Status</th>
+              <th class="actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="keysBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><h2>Recent events</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>When</th><th>Type</th><th>Key</th><th>IP</th><th>Detail</th></tr>
+          </thead>
+          <tbody id="eventsBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Create key modal -->
+  <div class="modal hidden" id="createModal">
+    <div class="modal-card">
+      <h3>Create key</h3>
+      <label>Email (optional)
+        <input type="email" id="createEmail" placeholder="user@example.com" />
+      </label>
+      <label>Note (optional)
+        <input type="text" id="createNote" placeholder="e.g. Lifetime / Promo XYZ" />
+      </label>
+      <div class="modal-actions">
+        <button class="btn ghost" id="createCancel">Cancel</button>
+        <button class="btn primary" id="createOk">Create</button>
+      </div>
+      <div id="createResult" class="hint"></div>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>

@@ -26,17 +26,56 @@ const els = {
   folderDisplay: $('folderDisplay'),
   activeGrid: $('activeGrid'),
   libraryList: $('libraryList'),
+  libSearch: $('libSearch'),
+  libClear: $('libClear'),
+  sitesGrid: $('sitesGrid'),
+  bv: $('bv'),
+  bvBack: $('bvBack'),
+  bvFwd: $('bvFwd'),
+  bvReload: $('bvReload'),
+  bvUrl: $('bvUrl'),
+  bvDownload: $('bvDownload'),
+  bvLoading: $('bvLoading'),
+  searchInput: $('searchInput'),
+  searchBtn: $('searchBtn'),
+  searchStatus: $('searchStatus'),
+  searchResults: $('searchResults'),
   log: $('log'),
   binWarning: $('binWarning'),
   themeToggle: $('themeToggle'),
+  statusDot: $('statusDot'),
+  statusText: $('statusText'),
+  statActive: $('statActive'),
+  statSpeed: $('statSpeed'),
+  settingsBrowseBtn: $('settingsBrowseBtn'),
+  settingsFolderHint: $('settingsFolderHint'),
+  settingsYtdlp: $('settingsYtdlp'),
+  settingsFfmpeg: $('settingsFfmpeg'),
 };
 
+const SUPPORTED_SITES = [
+  { name: 'YouTube',     url: 'https://www.youtube.com',    color: '#ff0033', mark: 'Y' },
+  { name: 'Facebook',    url: 'https://www.facebook.com',   color: '#1877f2', mark: 'F' },
+  { name: 'Instagram',   url: 'https://www.instagram.com',  color: '#e1306c', mark: 'I' },
+  { name: 'TikTok',      url: 'https://www.tiktok.com',     color: '#000000', mark: 'T' },
+  { name: 'X (Twitter)', url: 'https://x.com',              color: '#1d1f23', mark: 'X' },
+  { name: 'Vimeo',       url: 'https://vimeo.com',          color: '#1ab7ea', mark: 'V' },
+  { name: 'Dailymotion', url: 'https://www.dailymotion.com',color: '#0d244c', mark: 'D' },
+  { name: 'Twitch',      url: 'https://www.twitch.tv',      color: '#9146ff', mark: 'T' },
+  { name: 'SoundCloud',  url: 'https://soundcloud.com',     color: '#ff5500', mark: 'S' },
+  { name: 'Reddit',      url: 'https://www.reddit.com',     color: '#ff4500', mark: 'R' },
+];
+
 (async function init() {
+  // License gate first — block the app until activated
+  await runLicenseGate();
+
   state.folder = await window.api.defaultDownloadFolder();
   els.folderDisplay.textContent = state.folder;
 
   state.history = (await window.api.historyLoad()) || [];
   renderLibrary();
+  renderSites();
 
   const bin = await window.api.checkBinaries();
   if (!bin.ytdlpExists) {
@@ -53,18 +92,69 @@ const els = {
     `;
   }
 
+  state.binInfo = bin;
+  state.binWarn = !bin.ytdlpExists || !bin.ffmpegExists;
+  updateStatus();
   bindEvents();
 })();
 
+function updateStatus() {
+  let active = 0;
+  let totalKBps = 0;
+  for (const job of state.jobs.values()) {
+    if (job.state === 'downloading' || job.state === 'starting') active++;
+    if (job.lastSpeed) totalKBps += parseSpeedKBps(job.lastSpeed);
+  }
+  if (els.statActive) els.statActive.textContent = String(active);
+  if (els.statSpeed) els.statSpeed.textContent = active && totalKBps > 0 ? formatSpeed(totalKBps) : '—';
+  document.body.classList.toggle('has-active', active > 0);
+  if (els.statusDot && els.statusText) {
+    if (state.binWarn) {
+      els.statusDot.dataset.state = 'warn';
+      els.statusText.textContent = 'Missing binaries';
+    } else if (active > 0) {
+      els.statusDot.dataset.state = 'ok';
+      els.statusText.textContent = `${active} downloading`;
+    } else {
+      els.statusDot.dataset.state = 'ok';
+      els.statusText.textContent = 'Ready';
+    }
+  }
+}
+
+function parseSpeedKBps(s) {
+  const m = String(s).match(/([\d.]+)\s*([KMG]i?B\/s)/i);
+  if (!m) return 0;
+  const v = parseFloat(m[1]);
+  const u = m[2].toUpperCase();
+  if (u.startsWith('G')) return v * 1024 * 1024;
+  if (u.startsWith('M')) return v * 1024;
+  if (u.startsWith('K')) return v;
+  return v / 1024;
+}
+function formatSpeed(kbps) {
+  if (kbps >= 1024) return `${(kbps / 1024).toFixed(1)} MB/s`;
+  return `${kbps.toFixed(0)} KB/s`;
+}
+
+function refreshSettings() {
+  if (els.settingsFolderHint) els.settingsFolderHint.textContent = state.folder || '';
+  if (els.settingsYtdlp) els.settingsYtdlp.textContent =
+    state.binInfo ? (state.binInfo.ytdlpExists ? state.binInfo.ytdlp : 'Not found — place yt-dlp.exe in ' + state.binInfo.binDir) : '';
+  if (els.settingsFfmpeg) els.settingsFfmpeg.textContent =
+    state.binInfo ? (state.binInfo.ffmpegExists ? state.binInfo.ffmpeg : 'Not found — place ffmpeg.exe in ' + state.binInfo.binDir) : '';
+}
+
 function bindEvents() {
   // Tabs
-  $$('.nav-btn[data-tab]').forEach((btn) => {
+  $$('.side-btn[data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      $$('.nav-btn[data-tab]').forEach((b) => b.classList.remove('active'));
+      $$('.side-btn[data-tab]').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       const tab = btn.dataset.tab;
       $$('.tab-pane').forEach((p) => p.classList.toggle('active', p.dataset.pane === tab));
       if (tab === 'library') renderLibrary();
+      if (tab === 'settings') refreshSettings();
     });
   });
 
@@ -101,6 +191,45 @@ function bindEvents() {
       state.folder = f;
       els.folderDisplay.textContent = f;
     }
+  });
+
+  if (els.settingsBrowseBtn) {
+    els.settingsBrowseBtn.addEventListener('click', async () => {
+      const f = await window.api.pickFolder();
+      if (f) {
+        state.folder = f;
+        els.folderDisplay.textContent = f;
+        refreshSettings();
+      }
+    });
+  }
+
+  // Generic modal helper
+  const bindModal = (backdrop, closeBtn, onOpen) => {
+    if (!backdrop) return { open: () => {}, close: () => {} };
+    const open = () => { backdrop.classList.remove('hidden'); onOpen && onOpen(); };
+    const close = () => backdrop.classList.add('hidden');
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+    return { open, close };
+  };
+
+  // About modal
+  const aboutModalApi = bindModal($('aboutModal'), $('aboutModalClose'));
+  const aboutBtn = $('aboutBtn');
+  if (aboutBtn) aboutBtn.addEventListener('click', aboutModalApi.open);
+
+  // Supported sites modal
+  const sitesModalApi = bindModal($('sitesModal'), $('sitesModalClose'), loadSupportedSites);
+  const sitesBtn = $('sitesBtn');
+  if (sitesBtn) sitesBtn.addEventListener('click', sitesModalApi.open);
+  const sitesFilter = $('sitesFilter');
+  if (sitesFilter) sitesFilter.addEventListener('input', renderSitesList);
+
+  // Esc closes any open modal
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach((m) => m.classList.add('hidden'));
   });
 
   els.openFolderBtn.addEventListener('click', () => {
@@ -152,6 +281,23 @@ function bindEvents() {
     els.themeToggle.checked = false;
     document.body.classList.add('light');
   }
+
+  // Library
+  els.libSearch.addEventListener('input', renderLibrary);
+  els.libClear.addEventListener('click', () => {
+    if (!state.history.length) return;
+    if (!confirm('Clear all library entries? This does not delete the files.')) return;
+    state.history = [];
+    window.api.historySave(state.history);
+    renderLibrary();
+  });
+
+  // Browser (embedded webview)
+  initBrowser();
+
+  // Search
+  els.searchBtn.addEventListener('click', runSearch);
+  els.searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
 
   // IPC
   window.api.onProgress(handleProgress);
@@ -232,6 +378,7 @@ async function startDownload() {
   };
   state.jobs.set(id, job);
   renderJob(job);
+  updateStatus();
   els.urlInput.value = '';
 
   // Fetch metadata in background (don't block)
@@ -308,6 +455,8 @@ function handleProgress({ id, percent, size, speed, eta }) {
   if (!job) return;
   job.percent = percent;
   job.state = 'downloading';
+  job.lastSpeed = speed || '';
+  updateStatus();
   const card = document.getElementById(id);
   if (!card) return;
   card.querySelector('.bar-fill').style.width = `${percent}%`;
@@ -356,6 +505,8 @@ function handleLog({ id, message, error }) {
 function handleDone({ id, ok, error, code, file, percent }) {
   const job = state.jobs.get(id);
   if (!job) return;
+  job.lastSpeed = '';
+  updateStatus();
   const card = document.getElementById(id);
   if (!card) return;
   if (ok) {
@@ -429,32 +580,320 @@ async function cancelJob(id) {
   const card = document.getElementById(id);
   if (card && card.parentElement) card.parentElement.removeChild(card);
   state.jobs.delete(id);
+  updateStatus();
 }
 
 function renderLibrary() {
+  const filter = (els.libSearch?.value || '').toLowerCase().trim();
   els.libraryList.innerHTML = '';
-  for (const item of state.history) {
-    const div = document.createElement('div');
-    div.className = 'lib-item';
-    div.innerHTML = `
-      <div class="lib-thumb">${item.thumbnail ? `<img src="${escapeAttr(item.thumbnail)}" referrerpolicy="no-referrer" onerror="this.style.display='none'"/>` : ''}</div>
-      <div class="lib-info">
-        <div class="lib-title">${escapeHtml(item.title || item.url)}</div>
-        <div class="lib-sub">${item.mode === 'audio' ? 'MP3 ' + (item.audioBitrate || '') : (item.quality || '')} · ${new Date(item.completedAt).toLocaleString()}</div>
-      </div>
-      <div class="lib-actions">
-        <button class="ghost-btn open-file">Open</button>
-        <button class="ghost-btn open-loc">Folder</button>
-      </div>
-    `;
-    div.querySelector('.open-file').addEventListener('click', () => {
-      if (item.file) window.api.openFolder(item.file);
-    });
-    div.querySelector('.open-loc').addEventListener('click', () => {
-      if (item.folder) window.api.openFolder(item.folder);
-    });
-    els.libraryList.appendChild(div);
+
+  const items = state.history
+    .filter((it) => !filter || (it.title || it.url || '').toLowerCase().includes(filter))
+    .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+
+  if (items.length === 0) return;
+
+  const groups = new Map();
+  for (const it of items) {
+    const key = groupKey(it.completedAt);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(it);
   }
+
+  for (const [label, list] of groups) {
+    const h = document.createElement('div');
+    h.className = 'lib-group-title';
+    h.textContent = label;
+    els.libraryList.appendChild(h);
+    for (const item of list) {
+      const badge = item.mode === 'audio'
+        ? `MP3${item.audioBitrate ? ' ' + item.audioBitrate : ''}`
+        : (item.quality || '').toUpperCase();
+      const div = document.createElement('div');
+      div.className = 'lib-item';
+      div.innerHTML = `
+        <div class="lib-thumb">
+          ${item.thumbnail ? `<img src="${escapeAttr(item.thumbnail)}" referrerpolicy="no-referrer" onerror="this.style.display='none'"/>` : ''}
+          ${badge ? `<span class="lib-badge">${escapeHtml(badge)}</span>` : ''}
+        </div>
+        <div class="lib-info">
+          <div class="lib-title">${escapeHtml(item.title || item.url)}</div>
+          <div class="lib-sub">${escapeHtml(new Date(item.completedAt).toLocaleString())}</div>
+        </div>
+        <div class="lib-actions">
+          <button class="ghost-btn open-file">Open</button>
+          <button class="ghost-btn open-loc">Folder</button>
+        </div>
+      `;
+      div.querySelector('.open-file').addEventListener('click', () => {
+        if (item.file) window.api.openFolder(item.file);
+      });
+      div.querySelector('.open-loc').addEventListener('click', () => {
+        if (item.folder) window.api.openFolder(item.folder);
+      });
+      els.libraryList.appendChild(div);
+    }
+  }
+}
+
+function groupKey(ts) {
+  if (!ts) return 'Earlier';
+  const d = new Date(ts);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const yest = new Date(today); yest.setDate(yest.getDate() - 1);
+  const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
+  if (d >= today) return 'Today';
+  if (d >= yest) return 'Yesterday';
+  if (d >= weekAgo) return 'Earlier this week';
+  return 'Earlier';
+}
+
+function renderSites() {
+  if (!els.sitesGrid) return;
+  els.sitesGrid.innerHTML = '';
+  for (const s of SUPPORTED_SITES) {
+    const btn = document.createElement('button');
+    btn.className = 'site-tile';
+    btn.type = 'button';
+    btn.innerHTML = `
+      <span class="site-mark" style="background:${s.color}">${escapeHtml(s.mark)}</span>
+      <span>${escapeHtml(s.name)}</span>
+    `;
+    btn.addEventListener('click', () => bvNavigate(s.url));
+    els.sitesGrid.appendChild(btn);
+  }
+}
+
+function initBrowser() {
+  const bv = els.bv;
+  if (!bv) return;
+
+  const setLoading = (on) => els.bvLoading.classList.toggle('hidden', !on);
+  const syncNavButtons = () => {
+    els.bvBack.disabled = !bv.canGoBack();
+    els.bvFwd.disabled = !bv.canGoForward();
+  };
+
+  bv.addEventListener('did-start-loading', () => setLoading(true));
+  bv.addEventListener('did-stop-loading', () => { setLoading(false); syncNavButtons(); });
+  bv.addEventListener('did-navigate', (e) => { els.bvUrl.value = e.url; syncNavButtons(); });
+  bv.addEventListener('did-navigate-in-page', (e) => { els.bvUrl.value = e.url; syncNavButtons(); });
+  bv.addEventListener('new-window', (e) => { e.preventDefault?.(); bvNavigate(e.url); });
+
+  els.bvBack.addEventListener('click', () => bv.canGoBack() && bv.goBack());
+  els.bvFwd.addEventListener('click', () => bv.canGoForward() && bv.goForward());
+  els.bvReload.addEventListener('click', () => bv.reload());
+  els.bvUrl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const v = els.bvUrl.value.trim();
+      if (v) bvNavigate(/^https?:\/\//i.test(v) ? v : `https://www.google.com/search?q=${encodeURIComponent(v)}`);
+    }
+  });
+  els.bvDownload.addEventListener('click', () => {
+    const url = bv.getURL();
+    if (!url || !/^https?:/i.test(url)) {
+      alert('Open a page first.');
+      return;
+    }
+    document.querySelector('.side-btn[data-tab="new"]').click();
+    els.urlInput.value = url;
+    startDownload();
+  });
+}
+
+function bvNavigate(url) {
+  if (!els.bv) return;
+  document.querySelector('.side-btn[data-tab="browser"]').click();
+  els.bv.loadURL(url).catch(() => {});
+}
+
+async function runSearch() {
+  const q = (els.searchInput.value || '').trim();
+  els.searchResults.innerHTML = '';
+  els.searchStatus.className = 'search-status';
+  if (!q) { els.searchStatus.textContent = ''; return; }
+  els.searchStatus.textContent = 'Searching…';
+  els.searchBtn.disabled = true;
+  try {
+    const res = await window.api.ytSearch(q, 10);
+    if (!res.ok) {
+      els.searchStatus.className = 'search-status error';
+      els.searchStatus.textContent = res.error || 'Search failed.';
+      return;
+    }
+    if (!res.items.length) {
+      els.searchStatus.textContent = 'No results.';
+      return;
+    }
+    els.searchStatus.textContent = `${res.items.length} results`;
+    for (const r of res.items) renderSearchResult(r);
+  } finally {
+    els.searchBtn.disabled = false;
+  }
+}
+
+function renderSearchResult(r) {
+  const div = document.createElement('div');
+  div.className = 'search-item';
+  div.innerHTML = `
+    <div class="res-thumb">${r.thumbnail ? `<img src="${escapeAttr(r.thumbnail)}" referrerpolicy="no-referrer" onerror="this.style.display='none'"/>` : ''}</div>
+    <div class="res-info">
+      <div class="res-title">${escapeHtml(r.title)}</div>
+      <div class="res-sub">${escapeHtml(r.channel || '')}${r.duration ? ' · ' + formatDuration(r.duration) : ''}</div>
+    </div>
+    <div class="res-actions">
+      <button class="ghost-btn add-video">Video</button>
+      <button class="ghost-btn add-audio">MP3</button>
+    </div>
+  `;
+  div.querySelector('.add-video').addEventListener('click', () => addFromSearch(r, 'video'));
+  div.querySelector('.add-audio').addEventListener('click', () => addFromSearch(r, 'audio'));
+  els.searchResults.appendChild(div);
+}
+
+function addFromSearch(r, mode) {
+  document.querySelector('.nav-btn[data-tab="new"]').click();
+  els.urlInput.value = r.url;
+  switchMode(mode);
+  startDownload();
+}
+
+function formatDuration(s) {
+  s = Math.floor(Number(s) || 0);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+let extractorsCache = null;
+async function loadSupportedSites() {
+  const body = $('sitesListBody');
+  const count = $('sitesCount');
+  if (extractorsCache) { renderSitesList(); return; }
+  if (body) body.innerHTML = '<div class="modal-loading">Loading from yt-dlp…</div>';
+  if (count) count.textContent = '';
+  const res = await window.api.listExtractors();
+  if (!res.ok) {
+    if (body) body.innerHTML = `<div class="modal-empty">Could not fetch list. ${escapeHtml(res.error || '')}</div>`;
+    return;
+  }
+  extractorsCache = res.list;
+  renderSitesList();
+}
+
+function renderSitesList() {
+  const body = $('sitesListBody');
+  const count = $('sitesCount');
+  const filterEl = $('sitesFilter');
+  if (!body || !extractorsCache) return;
+  const f = (filterEl?.value || '').toLowerCase().trim();
+  const list = f ? extractorsCache.filter((s) => s.toLowerCase().includes(f)) : extractorsCache;
+  if (count) count.textContent = `${list.length}${f ? ' of ' + extractorsCache.length : ''} sites`;
+  if (!list.length) {
+    body.innerHTML = '<div class="modal-empty">No matches.</div>';
+    return;
+  }
+  body.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (const name of list) {
+    const div = document.createElement('div');
+    div.className = 'modal-list-item';
+    div.textContent = name;
+    frag.appendChild(div);
+  }
+  body.appendChild(frag);
+}
+
+// ---------- License gate ----------
+
+async function runLicenseGate() {
+  const lock = document.getElementById('lockScreen');
+  if (!lock || !window.api?.licenseStatus) return;
+
+  const status = await window.api.licenseStatus();
+  if (status.licensed) {
+    lock.classList.add('hidden');
+  } else {
+    await showLockScreen();
+  }
+
+  // If revoked while running, lock again
+  window.api.onLicenseRevoked(() => {
+    const sub = document.getElementById('lockSub');
+    if (sub) sub.textContent = 'Your license was revoked. Contact support or enter a new key.';
+    showLockScreen();
+  });
+}
+
+function showLockScreen() {
+  return new Promise((resolve) => {
+    const lock = document.getElementById('lockScreen');
+    lock.classList.remove('hidden');
+
+    const tabs = lock.querySelectorAll('[data-lk-mode]');
+    const panes = lock.querySelectorAll('[data-lk-pane]');
+    tabs.forEach((t) => t.addEventListener('click', () => {
+      const m = t.dataset.lkMode;
+      tabs.forEach((x) => x.classList.toggle('active', x === t));
+      panes.forEach((p) => p.classList.toggle('hidden', p.dataset.lkPane !== m));
+    }, { once: false }));
+
+    const emailInput = document.getElementById('lkEmail');
+    const emailBtn   = document.getElementById('lkEmailBtn');
+    const emailMsg   = document.getElementById('lkEmailMsg');
+    const keyInput   = document.getElementById('lkKey');
+    const activateBtn= document.getElementById('lkActivateBtn');
+    const keyMsg     = document.getElementById('lkKeyMsg');
+
+    const setMsg = (el, text, cls) => {
+      el.className = 'lock-msg' + (cls ? ' ' + cls : '');
+      el.textContent = text;
+    };
+
+    emailBtn.onclick = async () => {
+      const email = (emailInput.value || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setMsg(emailMsg, 'Enter a valid email.', 'error'); return;
+      }
+      emailBtn.disabled = true;
+      setMsg(emailMsg, 'Requesting key…');
+      const r = await window.api.licenseSignup(email);
+      if (!r.ok) {
+        emailBtn.disabled = false;
+        setMsg(emailMsg, r.error || 'Signup failed.', 'error');
+        return;
+      }
+      setMsg(emailMsg, `Got key ${r.key}. Activating…`, 'success');
+      const a = await window.api.licenseActivate(r.key);
+      emailBtn.disabled = false;
+      if (a.ok) {
+        setMsg(emailMsg, 'Activated. Welcome!', 'success');
+        setTimeout(() => {
+          document.getElementById('lockScreen').classList.add('hidden');
+          resolve();
+        }, 600);
+      } else {
+        setMsg(emailMsg, a.error || 'Activation failed.', 'error');
+      }
+    };
+
+    activateBtn.onclick = async () => {
+      const key = (keyInput.value || '').trim();
+      if (!key) { setMsg(keyMsg, 'Enter a key.', 'error'); return; }
+      activateBtn.disabled = true;
+      setMsg(keyMsg, 'Activating…');
+      const a = await window.api.licenseActivate(key);
+      activateBtn.disabled = false;
+      if (a.ok) {
+        setMsg(keyMsg, 'Activated. Welcome!', 'success');
+        setTimeout(() => {
+          document.getElementById('lockScreen').classList.add('hidden');
+          resolve();
+        }, 600);
+      } else {
+        setMsg(keyMsg, a.error || 'Activation failed.', 'error');
+      }
+    };
+  });
 }
 
 function escapeHtml(s) {

@@ -1,0 +1,28 @@
+<!-- Shared base styles for preview cards. Loaded by each card via @import. -->
+<style id="velox-card-base">
+  @import url("../colors_and_type.css");
+  html, body {
+    margin: 0;
+    background: #0c1220;
+    color: var(--velox-text);
+    font-family: var(--velox-font-sans);
+    overflow: hidden;
+  }
+  body {
+    padding: 18px 20px;
+    min-height: 100vh;
+    box-sizing: border-box;
+  }
+  /* Subtle radial ambient so glass surfaces have something to blur over */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(60% 50% at 12% 0%, rgba(108,196,255,0.10), transparent 60%),
+      radial-gradient(50% 60% at 100% 100%, rgba(167,139,250,0.08), transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  body > * { position: relative; z-index: 1; }
+</style>

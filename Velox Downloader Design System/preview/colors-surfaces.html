@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;background:#0c1220;font-family:var(--velox-font-sans);color:var(--velox-text);overflow:hidden;height:100vh}
+  body{padding:14px 18px;box-sizing:border-box}
+  body::before{content:'';position:fixed;inset:0;background:radial-gradient(60% 50% at 8% 0%,rgba(108,196,255,.10),transparent 60%);pointer-events:none}
+  .label{font:600 10px/1 var(--velox-font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--velox-text-dim);margin-bottom:10px;position:relative}
+  .row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;position:relative}
+  .chip{height:90px;border-radius:10px;display:flex;flex-direction:column;justify-content:space-between;padding:10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);font:500 11px/1.2 var(--velox-font-sans)}
+  .chip .name{font-weight:600}
+  .chip .hex{font:500 10px/1 var(--velox-font-mono);opacity:.85}
+  .dark-fg{color:#0c1220}
+  .light-fg{color:#e6ebf3}
+</style>
+</head><body>
+  <div class="label">Surfaces · dark</div>
+  <div class="row">
+    <div class="chip light-fg" style="background:#0c1220"><div class="name">bg-app</div><div class="hex">#0C1220</div></div>
+    <div class="chip light-fg" style="background:#1c202c"><div class="name">bg-card</div><div class="hex">rgba(28,32,44,.72)</div></div>
+    <div class="chip light-fg" style="background:#242836"><div class="name">bg-card-2</div><div class="hex">rgba(36,40,54,.65)</div></div>
+    <div class="chip light-fg" style="background:#14182a"><div class="name">bg-input</div><div class="hex">rgba(20,24,36,.85)</div></div>
+    <div class="chip light-fg" style="background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)"><div class="name">bg-pill</div><div class="hex">rgba(255,255,255,.05)</div></div>
+    <div class="chip" style="background:rgba(108,196,255,.18);color:#6cc4ff;box-shadow:inset 0 0 0 1px rgba(108,196,255,.4)"><div class="name">bg-pill-active</div><div class="hex">rgba(108,196,255,.18)</div></div>
+  </div>
+</body></html>

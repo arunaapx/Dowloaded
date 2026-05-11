@@ -4,6 +4,9 @@ contextBridge.exposeInMainWorld('api', {
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
   defaultDownloadFolder: () => ipcRenderer.invoke('default-download-folder'),
   openFolder: (target) => ipcRenderer.invoke('open-folder', target),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  ytSearch: (query, limit) => ipcRenderer.invoke('yt-search', { query, limit }),
+  listExtractors: () => ipcRenderer.invoke('list-extractors'),
   readClipboard: () => ipcRenderer.invoke('read-clipboard'),
   checkBinaries: () => ipcRenderer.invoke('check-binaries'),
   fetchInfo: (url) => ipcRenderer.invoke('fetch-info', url),
@@ -18,4 +21,11 @@ contextBridge.exposeInMainWorld('api', {
   onLog: (cb) => ipcRenderer.on('download-log', (_e, d) => cb(d)),
   onDone: (cb) => ipcRenderer.on('download-done', (_e, d) => cb(d)),
   onBridgeDownload: (cb) => ipcRenderer.on('bridge-download', (_e, d) => cb(d)),
+  // License
+  licenseStatus:    () => ipcRenderer.invoke('license-status'),
+  licenseSignup:    (email) => ipcRenderer.invoke('license-signup', email),
+  licenseActivate:  (key)   => ipcRenderer.invoke('license-activate', key),
+  licenseClear:     () => ipcRenderer.invoke('license-clear'),
+  licenseHeartbeat: () => ipcRenderer.invoke('license-heartbeat'),
+  onLicenseRevoked: (cb) => ipcRenderer.on('license-revoked', () => cb()),
 });

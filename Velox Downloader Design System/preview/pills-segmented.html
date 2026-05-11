@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;background:#0c1220;font-family:var(--velox-font-sans);color:var(--velox-text);overflow:hidden;height:100vh}
+  body{padding:18px 22px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px}
+  body::before{content:'';position:fixed;inset:0;background:radial-gradient(60% 50% at 8% 0%,rgba(108,196,255,.10),transparent 60%);pointer-events:none}
+  .row{display:flex;gap:8px;position:relative;align-items:center}
+  .lab{font:500 10px/1 var(--velox-font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--velox-text-faint);width:80px;flex-shrink:0}
+  .pill{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:#98a2b3;padding:7px 16px;border-radius:8px;font:500 13px/1 var(--velox-font-sans);cursor:pointer}
+  .pill.hover{color:#e6ebf3;border-color:rgba(255,255,255,.14)}
+  .pill.active{background:rgba(108,196,255,.18);color:#6cc4ff;border-color:rgba(108,196,255,.4)}
+  .seg{display:inline-flex;background:rgba(20,24,36,.85);border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:3px;gap:2px}
+  .seg .s{background:transparent;border:0;color:#98a2b3;font:600 13px/1 var(--velox-font-sans);padding:6px 14px;border-radius:999px;cursor:pointer}
+  .seg .s.active{background:#6cc4ff;color:#0b1220;box-shadow:0 0 20px rgba(108,196,255,.35)}
+</style>
+</head><body>
+  <div class="row"><div class="lab">Pills</div>
+    <button class="pill">4K</button>
+    <button class="pill active">1080p</button>
+    <button class="pill">720p</button>
+    <button class="pill hover">480p</button>
+  </div>
+  <div class="row"><div class="lab">Audio</div>
+    <button class="pill">320kbps</button>
+    <button class="pill active">192kbps</button>
+    <button class="pill">128kbps</button>
+  </div>
+  <div class="row"><div class="lab">Segmented</div>
+    <div class="seg">
+      <button class="s active">Normal</button>
+      <button class="s">Advanced</button>
+    </div>
+  </div>
+</body></html>

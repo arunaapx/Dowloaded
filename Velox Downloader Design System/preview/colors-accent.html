@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;background:#0c1220;font-family:var(--velox-font-sans);color:var(--velox-text);overflow:hidden;height:100vh}
+  body{padding:14px 18px;box-sizing:border-box}
+  body::before{content:'';position:fixed;inset:0;background:radial-gradient(60% 50% at 8% 0%,rgba(108,196,255,.10),transparent 60%),radial-gradient(50% 60% at 100% 100%,rgba(167,139,250,.08),transparent 60%);pointer-events:none}
+  .row{display:flex;gap:10px;position:relative}
+  .col{flex:1}
+  .label{font:600 10px/1 var(--velox-font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--velox-text-dim);margin-bottom:8px}
+  .strip{display:flex;border-radius:10px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+  .chip{flex:1;display:flex;flex-direction:column;justify-content:flex-end;padding:8px;height:70px;font:600 11px/1.2 var(--velox-font-mono)}
+  .chip .hex{opacity:.85;font-weight:500}
+  .chip.dark{color:#0c1220}
+  .chip.light{color:#fff}
+  .legend{margin-top:6px;font:400 11px/1.4 var(--velox-font-sans);color:var(--velox-text-faint)}
+</style>
+</head><body>
+  <div class="row">
+    <div class="col">
+      <div class="label">Accent / Brand</div>
+      <div class="strip">
+        <div class="chip dark" style="background:#6cc4ff"><div>accent</div><div class="hex">#6CC4FF</div></div>
+        <div class="chip dark" style="background:#4ea8ff"><div>accent-2</div><div class="hex">#4EA8FF</div></div>
+        <div class="chip light" style="background:#a78bfa"><div>accent-3</div><div class="hex">#A78BFA</div></div>
+      </div>
+      <div class="legend">Gradient 135° from accent → accent-2 powers the CTA and progress bar. Accent-3 only appears in the logo lockup.</div>
+    </div>
+  </div>
+</body></html>
