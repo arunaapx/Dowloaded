@@ -37,6 +37,21 @@
           <span>Search</span>
         </button>
       </nav>
+      <div class="profile-card hidden" id="profileCard">
+        <div class="profile-top">
+          <div class="profile-avatar" id="profileAvatar">U</div>
+          <div class="profile-meta">
+            <div class="profile-name" id="profileEmail">Licensed user</div>
+            <div class="profile-key" id="profileKey">VLX-...</div>
+          </div>
+        </div>
+        <div class="profile-row">
+          <span id="profileDays">—</span>
+          <span class="profile-state" id="profileState">Active</span>
+        </div>
+        <div class="profile-meter"><span id="profileMeter"></span></div>
+        <button class="profile-signout" id="profileSignOut" type="button">Sign out</button>
+      </div>
       <nav class="sidenav sidenav-bottom">
         <button class="side-btn" id="sitesBtn" type="button">
           <svg class="ico" viewBox="0 0 24 24" fill="none"><path d="M3 5h18M3 12h18M3 19h18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -237,6 +252,18 @@
         </div>
         <div class="setting-row">
           <div class="setting-label">
+            <div class="setting-name">License profile</div>
+            <div class="setting-hint" id="settingsLicenseProfile"></div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-name">License expiry</div>
+            <div class="setting-hint" id="settingsLicenseExpiry"></div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">
             <div class="setting-name">yt-dlp binary</div>
             <div class="setting-hint" id="settingsYtdlp"></div>
           </div>
@@ -245,6 +272,12 @@
           <div class="setting-label">
             <div class="setting-name">ffmpeg binary</div>
             <div class="setting-hint" id="settingsFfmpeg"></div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-name">ffprobe binary</div>
+            <div class="setting-hint" id="settingsFfprobe"></div>
           </div>
         </div>
       </div>
@@ -266,6 +299,8 @@
     <span class="status-metric"><span class="status-metric-label">Active</span><span id="statActive">0</span></span>
     <span class="status-sep"></span>
     <span class="status-metric"><span class="status-metric-label">Speed</span><span id="statSpeed">—</span></span>
+    <span class="status-sep"></span>
+    <span class="status-metric"><span class="status-metric-label">License</span><span id="statLicense">—</span></span>
     <span class="spacer"></span>
     <span class="status-version">v2.1</span>
   </div>

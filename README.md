@@ -10,6 +10,8 @@ Desktop app for downloading videos from YouTube, Facebook, TikTok, Instagram, an
 - Full playlist download
 - Progress bars, speed, ETA
 - Cancellable downloads
+- License profile with expiry day count
+- Admin-controlled license expiry, block/unblock, revoke, and device reset
 
 ## Setup
 
@@ -24,15 +26,28 @@ npm install
 Download these and place them in the `bin/` folder:
 
 - **yt-dlp.exe** — https://github.com/yt-dlp/yt-dlp/releases/latest (the `yt-dlp.exe` asset)
-- **ffmpeg.exe** — https://www.gyan.dev/ffmpeg/builds/ (extract `bin/ffmpeg.exe` from the release-essentials zip)
+- **ffmpeg.exe** and **ffprobe.exe** — https://www.gyan.dev/ffmpeg/builds/ (extract both from the release-essentials zip `bin/` folder)
 
-ffmpeg is required for 1080p+ downloads and MP3 conversion.
+ffmpeg and ffprobe are required for 1080p+ downloads, audio extraction, merging,
+remuxing, and compatibility conversion to MP4.
 
 ### 3. Run
 
 ```powershell
 npm start
 ```
+
+The app license screen talks to `http://localhost:4000` by default. Start the
+license server before activating local test keys:
+
+```powershell
+cd server
+npm install
+npm start
+```
+
+For a hosted license server, set `LICENSE_SERVER_URL` when launching the app, or
+change the fallback URL in `main.js` before building the `.exe`.
 
 ### 4. Build a portable .exe (optional)
 

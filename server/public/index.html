@@ -25,6 +25,8 @@
     <section class="card stats">
       <div class="stat"><div class="stat-label">Total keys</div><div id="stTotal" class="stat-value">—</div></div>
       <div class="stat"><div class="stat-label">Active</div><div id="stActive" class="stat-value">—</div></div>
+      <div class="stat"><div class="stat-label">Blocked</div><div id="stBlocked" class="stat-value">—</div></div>
+      <div class="stat"><div class="stat-label">Expired</div><div id="stExpired" class="stat-value">—</div></div>
       <div class="stat"><div class="stat-label">Revoked</div><div id="stRevoked" class="stat-value">—</div></div>
       <div class="stat"><div class="stat-label">Unactivated</div><div id="stPending" class="stat-value">—</div></div>
     </section>
@@ -40,6 +42,7 @@
             <tr>
               <th>Key</th>
               <th>Email</th>
+              <th>Expiry</th>
               <th>Device</th>
               <th>Created</th>
               <th>Heartbeat</th>
@@ -75,11 +78,37 @@
       <label>Note (optional)
         <input type="text" id="createNote" placeholder="e.g. Lifetime / Promo XYZ" />
       </label>
+      <label>License days
+        <input type="number" id="createDays" min="0" max="36500" value="30" />
+      </label>
       <div class="modal-actions">
         <button class="btn ghost" id="createCancel">Cancel</button>
         <button class="btn primary" id="createOk">Create</button>
       </div>
       <div id="createResult" class="hint"></div>
+    </div>
+  </div>
+
+  <!-- Edit key modal -->
+  <div class="modal hidden" id="editModal">
+    <div class="modal-card">
+      <h3>Edit key</h3>
+      <div id="editKey" class="hint"></div>
+      <label>Email
+        <input type="email" id="editEmail" placeholder="user@example.com" />
+      </label>
+      <label>Expiry date
+        <input type="date" id="editExpiry" />
+      </label>
+      <label>Note
+        <input type="text" id="editNote" placeholder="Admin note" />
+      </label>
+      <div class="modal-actions">
+        <button class="btn ghost" id="editLifetime">Lifetime</button>
+        <button class="btn ghost" id="editCancel">Cancel</button>
+        <button class="btn primary" id="editSave">Save</button>
+      </div>
+      <div id="editResult" class="hint"></div>
     </div>
   </div>
 

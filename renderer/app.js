@@ -13,6 +13,7 @@ const state = {
   vCodec: 'auto',
   vBitrate: 0,
   aFormat: 'mp3',
+  pendingDownloadOptions: null,
 };
 
 const els = {
@@ -47,10 +48,22 @@ const els = {
   statusText: $('statusText'),
   statActive: $('statActive'),
   statSpeed: $('statSpeed'),
+  statLicense: $('statLicense'),
+  profileCard: $('profileCard'),
+  profileAvatar: $('profileAvatar'),
+  profileEmail: $('profileEmail'),
+  profileKey: $('profileKey'),
+  profileDays: $('profileDays'),
+  profileState: $('profileState'),
+  profileMeter: $('profileMeter'),
+  profileSignOut: $('profileSignOut'),
   settingsBrowseBtn: $('settingsBrowseBtn'),
   settingsFolderHint: $('settingsFolderHint'),
+  settingsLicenseProfile: $('settingsLicenseProfile'),
+  settingsLicenseExpiry: $('settingsLicenseExpiry'),
   settingsYtdlp: $('settingsYtdlp'),
   settingsFfmpeg: $('settingsFfmpeg'),
+  settingsFfprobe: $('settingsFfprobe'),
 };
 
 const SUPPORTED_SITES = [
@@ -77,23 +90,25 @@ const SUPPORTED_SITES = [
   renderLibrary();
   renderSites();
 
+  // The thin client only needs ffmpeg/ffprobe (for merge + MP3). Extraction is
+  // done server-side, so yt-dlp is no longer required on this device.
   const bin = await window.api.checkBinaries();
-  if (!bin.ytdlpExists) {
+  if (!bin.ffmpegExists) {
     els.binWarning.classList.remove('hidden');
     els.binWarning.innerHTML = `
-      <strong>yt-dlp not found.</strong> Place <code>yt-dlp.exe</code> in <code>${escapeHtml(bin.binDir)}</code>.
-      Get it: <code>github.com/yt-dlp/yt-dlp/releases/latest</code>
-    `;
-  } else if (!bin.ffmpegExists) {
-    els.binWarning.classList.remove('hidden');
-    els.binWarning.innerHTML = `
-      <strong>ffmpeg not found.</strong> Required for 1080p+ and MP3.
+      <strong>ffmpeg not found.</strong> Required for 1080p+ merge and MP3.
       Place <code>ffmpeg.exe</code> in <code>${escapeHtml(bin.binDir)}</code>.
+    `;
+  } else if (!bin.ffprobeExists) {
+    els.binWarning.classList.remove('hidden');
+    els.binWarning.innerHTML = `
+      <strong>ffprobe not found.</strong> Required for reliable merge/remux/MP4 conversion.
+      Place <code>ffprobe.exe</code> in <code>${escapeHtml(bin.binDir)}</code>.
     `;
   }
 
   state.binInfo = bin;
-  state.binWarn = !bin.ytdlpExists || !bin.ffmpegExists;
+  state.binWarn = !bin.ffmpegExists || !bin.ffprobeExists;
   updateStatus();
   bindEvents();
 })();
@@ -143,6 +158,8 @@ function refreshSettings() {
     state.binInfo ? (state.binInfo.ytdlpExists ? state.binInfo.ytdlp : 'Not found — place yt-dlp.exe in ' + state.binInfo.binDir) : '';
   if (els.settingsFfmpeg) els.settingsFfmpeg.textContent =
     state.binInfo ? (state.binInfo.ffmpegExists ? state.binInfo.ffmpeg : 'Not found — place ffmpeg.exe in ' + state.binInfo.binDir) : '';
+  if (els.settingsFfprobe) els.settingsFfprobe.textContent =
+    state.binInfo ? (state.binInfo.ffprobeExists ? state.binInfo.ffprobe : 'Not found — place ffprobe.exe in ' + state.binInfo.binDir) : '';
 }
 
 function bindEvents() {
@@ -237,6 +254,7 @@ function bindEvents() {
   });
 
   els.startBtn.addEventListener('click', startDownload);
+  if (els.profileSignOut) els.profileSignOut.addEventListener('click', signOutLicense);
 
   els.urlInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') startDownload();
@@ -307,8 +325,14 @@ function bindEvents() {
 }
 
 function handleBridgeDownload(data) {
-  document.querySelector('.nav-btn[data-tab="new"]').click();
+  openTab('new');
   els.urlInput.value = data.url || '';
+  state.pendingDownloadOptions = {
+    referer: data.referer || data.sourcePage || '',
+    sourcePage: data.sourcePage || '',
+    detectedUrl: data.detectedUrl || '',
+    bridgeTitle: data.title || '',
+  };
   switchMode(data.mode === 'audio' ? 'audio' : 'video');
   if (data.mode === 'audio' && data.audioBitrate) {
     state.bitrate = String(data.audioBitrate);
@@ -322,6 +346,11 @@ function handleBridgeDownload(data) {
     );
   }
   startDownload();
+}
+
+function openTab(tab) {
+  const btn = document.querySelector(`.side-btn[data-tab="${tab}"]`);
+  if (btn) btn.click();
 }
 
 function setUiMode(mode) {
@@ -347,8 +376,8 @@ function switchMode(mode) {
 }
 
 async function startDownload() {
-  const url = els.urlInput.value.trim();
-  if (!url) {
+  const urls = parseDownloadInputs(els.urlInput.value);
+  if (!urls.length) {
     els.urlInput.focus();
     return;
   }
@@ -357,6 +386,25 @@ async function startDownload() {
     return;
   }
 
+  els.urlInput.value = '';
+  const pendingOptions = state.pendingDownloadOptions || {};
+  state.pendingDownloadOptions = null;
+  for (const url of urls) {
+    await queueDownload(url, pendingOptions);
+  }
+}
+
+function parseDownloadInputs(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return [];
+  const matches = raw.match(/https?:\/\/[^\s<>"']+/gi);
+  const values = matches && matches.length ? matches : raw.split(/\s+/);
+  return values
+    .map((url) => url.trim().replace(/[),.;]+$/g, ''))
+    .filter(Boolean);
+}
+
+async function queueDownload(url, extra = {}) {
   const id = 'job_' + Math.random().toString(36).slice(2, 9);
   const advanced = state.uiMode === 'advanced';
   const job = {
@@ -371,26 +419,36 @@ async function startDownload() {
     thumbnail: '',
     percent: 0,
     state: 'starting',
+    referer: extra.referer || '',
+    sourcePage: extra.sourcePage || '',
+    detectedUrl: extra.detectedUrl || '',
     vContainer: advanced ? state.vContainer : 'mp4',
     vCodec: advanced ? state.vCodec : 'auto',
     vBitrate: advanced ? state.vBitrate : 0,
     aFormat: advanced ? state.aFormat : 'mp3',
   };
+  if (extra.bridgeTitle) job.title = extra.bridgeTitle;
+  job.durationSec = 0;
   state.jobs.set(id, job);
   renderJob(job);
   updateStatus();
-  els.urlInput.value = '';
 
-  // Fetch metadata in background (don't block)
-  window.api.fetchInfo(url).then((info) => {
-    if (info.ok) {
-      job.title = info.title || job.url;
-      job.thumbnail = info.thumbnail || '';
-      updateJobCard(job);
-    }
-  });
+  // Thin-client model: the server extracts (license-gated) and returns metadata
+  // + the duration we need for progress; the bytes are then pulled by THIS device.
+  const info = await window.api.clientExtract(url);
+  if (info && info.ok && info.meta) {
+    if (info.meta.title) job.title = info.meta.title;
+    if (info.meta.thumbnail) job.thumbnail = info.meta.thumbnail;
+    job.durationSec = info.meta.duration || 0;
+    updateJobCard(job);
+  } else if (info && info.error) {
+    handleLog({ id, message: info.error, error: true });
+  }
 
-  await window.api.startDownload(job);
+  const startResult = await window.api.clientDownload(job);
+  if (!startResult?.ok) {
+    handleDone({ id, ok: false, error: startResult?.error || 'License is not active.' });
+  }
 }
 
 function renderJob(job) {
@@ -535,9 +593,12 @@ function handleDone({ id, ok, error, code, file, percent }) {
   } else {
     job.state = 'error';
     card.classList.add('error');
+    const message = error || `yt-dlp exited ${code}`;
     const st = card.querySelector('.job-state');
-    st.textContent = error ? 'Failed' : `Failed (${code})`;
+    st.textContent = 'Failed';
     st.className = 'job-state error';
+    card.querySelector('.speed').textContent = message;
+    handleLog({ id, message: `Download failed: ${message}`, error: true });
   }
 }
 
@@ -551,7 +612,10 @@ async function togglePause(id) {
     st.textContent = 'Resuming…';
     st.className = 'job-state';
     job.state = 'downloading';
-    await window.api.resumeDownload(id);
+    const resumed = await window.api.resumeDownload(id);
+    if (!resumed) {
+      handleDone({ id, ok: false, error: 'Could not resume download.' });
+    }
   } else {
     await window.api.pauseDownload(id);
     job.state = 'paused';
@@ -752,7 +816,7 @@ function renderSearchResult(r) {
 }
 
 function addFromSearch(r, mode) {
-  document.querySelector('.nav-btn[data-tab="new"]').click();
+  openTab('new');
   els.urlInput.value = r.url;
   switchMode(mode);
   startDownload();
@@ -812,16 +876,28 @@ async function runLicenseGate() {
   const status = await window.api.licenseStatus();
   if (status.licensed) {
     lock.classList.add('hidden');
+    renderLicenseProfile(status.profile || status);
   } else {
+    renderLicenseProfile(null);
+    if (status.message) {
+      const sub = document.getElementById('lockSub');
+      if (sub) sub.textContent = status.message;
+    }
     await showLockScreen();
   }
 
-  // If revoked while running, lock again
-  window.api.onLicenseRevoked(() => {
+  const showInvalidLicense = (detail = {}) => {
     const sub = document.getElementById('lockSub');
-    if (sub) sub.textContent = 'Your license was revoked. Contact support or enter a new key.';
+    if (sub) sub.textContent = detail.message || 'Your license is no longer active. Contact support or enter a new key.';
+    renderLicenseProfile(null);
     showLockScreen();
-  });
+  };
+
+  if (window.api.onLicenseInvalidated) {
+    window.api.onLicenseInvalidated(showInvalidLicense);
+  } else {
+    window.api.onLicenseRevoked(() => showInvalidLicense({ message: 'Your license was revoked. Contact support or enter a new key.' }));
+  }
 }
 
 function showLockScreen() {
@@ -866,6 +942,7 @@ function showLockScreen() {
       const a = await window.api.licenseActivate(r.key);
       emailBtn.disabled = false;
       if (a.ok) {
+        renderLicenseProfile(a.profile || null);
         setMsg(emailMsg, 'Activated. Welcome!', 'success');
         setTimeout(() => {
           document.getElementById('lockScreen').classList.add('hidden');
@@ -884,6 +961,7 @@ function showLockScreen() {
       const a = await window.api.licenseActivate(key);
       activateBtn.disabled = false;
       if (a.ok) {
+        renderLicenseProfile(a.profile || null);
         setMsg(keyMsg, 'Activated. Welcome!', 'success');
         setTimeout(() => {
           document.getElementById('lockScreen').classList.add('hidden');
@@ -894,6 +972,47 @@ function showLockScreen() {
       }
     };
   });
+}
+
+async function signOutLicense() {
+  if (!confirm('Sign out from this license?')) return;
+  await window.api.licenseClear();
+  renderLicenseProfile(null);
+  const sub = document.getElementById('lockSub');
+  if (sub) sub.textContent = 'You signed out. Enter your email or paste a license key to continue.';
+  showLockScreen();
+}
+
+function renderLicenseProfile(profile) {
+  if (!profile || !profile.key) {
+    if (els.profileCard) els.profileCard.classList.add('hidden');
+    if (els.statLicense) els.statLicense.textContent = '—';
+    if (els.settingsLicenseProfile) els.settingsLicenseProfile.textContent = 'Not activated';
+    if (els.settingsLicenseExpiry) els.settingsLicenseExpiry.textContent = '—';
+    return;
+  }
+
+  const email = profile.email || 'Licensed user';
+  const key = profile.key || '';
+  const days = typeof profile.daysRemaining === 'number' ? profile.daysRemaining : null;
+  const expiresAt = profile.expiresAt ? Number(profile.expiresAt) : null;
+  const dayText = days === null ? 'Lifetime' : days === 1 ? '1 day left' : `${days} days left`;
+  const expiryText = expiresAt ? new Date(expiresAt).toLocaleString() : 'Lifetime license';
+  const initial = (email.trim()[0] || 'U').toUpperCase();
+
+  if (els.profileCard) els.profileCard.classList.remove('hidden');
+  if (els.profileAvatar) els.profileAvatar.textContent = initial;
+  if (els.profileEmail) els.profileEmail.textContent = email;
+  if (els.profileKey) els.profileKey.textContent = key;
+  if (els.profileDays) els.profileDays.textContent = dayText;
+  if (els.profileState) els.profileState.textContent = profile.status || 'Active';
+  if (els.statLicense) els.statLicense.textContent = dayText;
+  if (els.settingsLicenseProfile) els.settingsLicenseProfile.textContent = `${email} · ${key}`;
+  if (els.settingsLicenseExpiry) els.settingsLicenseExpiry.textContent = expiryText;
+  if (els.profileMeter) {
+    const width = days === null ? 100 : Math.max(4, Math.min(100, (days / 30) * 100));
+    els.profileMeter.style.width = `${width}%`;
+  }
 }
 
 function escapeHtml(s) {

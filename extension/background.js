@@ -27,7 +27,16 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!url) return;
 
   const opts = await chrome.storage.local.get({ quality: '1080p', audioBitrate: '192' });
-  await sendToApp({ url, mode, quality: opts.quality, audioBitrate: opts.audioBitrate });
+  await sendToApp({
+    url,
+    mode,
+    quality: opts.quality,
+    audioBitrate: opts.audioBitrate,
+    referer: url === info.pageUrl ? '' : (info.pageUrl || tab?.url || ''),
+    sourcePage: info.pageUrl || tab?.url || '',
+    detectedUrl: info.srcUrl || info.linkUrl || '',
+    title: tab?.title || '',
+  });
 });
 
 async function sendToApp(payload) {

@@ -100,7 +100,7 @@ body { min-height: 100vh; }
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 14px;
 }
 .stat {
@@ -160,6 +160,12 @@ td.actions .btn { margin-left: 4px; }
 .badge.active   { background: rgba(110,231,163,0.12); color: var(--success); }
 .badge.revoked  { background: rgba(255,122,138,0.12); color: var(--danger); }
 .badge.pending  { background: rgba(252,211,77,0.12);  color: var(--warning); }
+.badge.blocked  { background: rgba(255,122,138,0.16); color: var(--danger); }
+.badge.expired  { background: rgba(252,211,77,0.14);  color: var(--warning); }
+.expiry {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
 
 /* Modal */
 .modal {

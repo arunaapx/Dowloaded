@@ -20,6 +20,12 @@ Sends videos from your browser to the Velox Downloader desktop app via a small l
 
 ## Usage
 
+**Automatic detection**
+- A small Velox button appears on large visible video players.
+- A page-level Velox button appears at the bottom-right when the extension detects media streams in tags, metadata, links, scripts, or network requests.
+- Click the bottom-right button to open an in-page detected video list. Click any row to send that detected stream to Velox.
+- The toolbar popup shows the best detected media candidates and can send the best one directly to the desktop app.
+
 **Right-click context menu** (works on any page):
 - *Download this page with Velox* — uses the current page URL
 - *Download link with Velox* — when right-clicking a link
@@ -32,6 +38,8 @@ Sends videos from your browser to the Velox Downloader desktop app via a small l
 - Status indicator shows whether the desktop app is running
 
 When you trigger a download, the desktop app pops to front and the URL appears in the New Download tab with the chosen quality, then auto-starts.
+
+For sites supported by yt-dlp, Velox prefers the page URL because yt-dlp can pick the best format. For generic sites, the extension can send direct `.m3u8`, `.mpd`, `.mp4`, `.webm`, and related media URLs with the page as the referer.
 
 ## Troubleshooting
 

@@ -5,14 +5,21 @@ Self-hosted license server + admin panel for Velox Downloader.
 ## Endpoints
 
 ### Public API
-- `POST /api/signup` — `{ email }` → `{ ok, key }` (rate-limited, 5/hr per IP)
-- `POST /api/activate` — `{ key, deviceId, deviceName }` → `{ ok, token }` (JWT)
-- `POST /api/heartbeat` — `{ token }` → `{ ok, revoked }`
+- `POST /api/signup` — `{ email }` → `{ ok, key, profile }` (rate-limited, 5/hr per IP)
+- `POST /api/activate` — `{ key, deviceId, deviceName }` → `{ ok, token, profile }` (JWT)
+- `POST /api/heartbeat` — `{ token }` → `{ ok, profile }`
 
-### Admin (HTTP Basic auth)
+Blocked, revoked, expired, or wrong-device licenses are rejected by activate and
+heartbeat.
+
+### Admin
 - `GET /admin/` — Web UI
 - `GET /admin/api/keys`
-- `POST /admin/api/keys` — `{ email?, note? }`
+- `POST /admin/api/keys` — `{ email?, note?, days? }` (`days: 0` = lifetime)
+- `PATCH /admin/api/keys/:key` — edit email, note, or expiry
+- `POST /admin/api/keys/:key/extend` — `{ days }`
+- `POST /admin/api/keys/:key/block`
+- `POST /admin/api/keys/:key/unblock`
 - `POST /admin/api/keys/:key/revoke`
 - `POST /admin/api/keys/:key/unrevoke`
 - `POST /admin/api/keys/:key/reset-device`
@@ -105,20 +112,32 @@ api.yourdomain.com {
 
 All state lives in `./data/` (override with `DATA_DIR` env var):
 
-- `licenses.db` — SQLite database
+- `licenses.json` — license/key database
 - `.jwt-secret` — auto-generated JWT signing secret (chmod 600)
 
 Back up the `data/` folder.
 
 ## Wire the client to your server
 
-In the Electron app (`main.js`), set the `LICENSE_SERVER_URL` constant — or set the
-env var `LICENSE_SERVER_URL` when running the app:
+The Electron app now defaults to the local license server:
+
+```
+http://localhost:4000
+```
+
+That means keys created in the local admin panel activate immediately while the
+server is running on the same machine.
+
+For a hosted/VPS license server, set the env var `LICENSE_SERVER_URL` when
+launching the app:
 
 ```
 $env:LICENSE_SERVER_URL = "https://api.yourdomain.com"
 npm start
 ```
+
+For a packaged `.exe`, change the fallback URL in `main.js` to your hosted
+server URL before building.
 
 ## Notes on cracking
 

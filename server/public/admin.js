@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 let allKeys = [];
+let editingKey = null;
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -9,8 +10,7 @@ async function api(path, opts = {}) {
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   if (res.status === 401) { location.href = '/login'; throw new Error('401'); }
-  const json = await res.json().catch(() => ({}));
-  return json;
+  return await res.json().catch(() => ({}));
 }
 
 async function loadAll() {
@@ -24,11 +24,15 @@ async function loadAll() {
 
 function renderStats() {
   const total = allKeys.length;
-  const revoked = allKeys.filter((k) => k.revoked).length;
-  const active = allKeys.filter((k) => !k.revoked && k.device_id).length;
-  const pending = allKeys.filter((k) => !k.revoked && !k.device_id).length;
+  const active = allKeys.filter((k) => k.status === 'active').length;
+  const blocked = allKeys.filter((k) => k.status === 'blocked').length;
+  const expired = allKeys.filter((k) => k.status === 'expired').length;
+  const revoked = allKeys.filter((k) => k.status === 'revoked').length;
+  const pending = allKeys.filter((k) => k.status === 'pending').length;
   $('stTotal').textContent = total;
   $('stActive').textContent = active;
+  $('stBlocked').textContent = blocked;
+  $('stExpired').textContent = expired;
   $('stRevoked').textContent = revoked;
   $('stPending').textContent = pending;
 }
@@ -39,28 +43,30 @@ function renderKeys() {
   tbody.innerHTML = '';
   const list = filter
     ? allKeys.filter((k) =>
-        (k.key + ' ' + (k.email || '') + ' ' + (k.device_name || '') + ' ' + (k.device_id || ''))
+        (k.key + ' ' + (k.email || '') + ' ' + (k.device_name || '') + ' ' + (k.device_id || '') + ' ' + (k.note || ''))
           .toLowerCase()
           .includes(filter)
       )
     : allKeys;
+
   for (const k of list) {
     const tr = document.createElement('tr');
-    const status = k.revoked
-      ? '<span class="badge revoked">Revoked</span>'
-      : k.device_id
-        ? '<span class="badge active">Active</span>'
-        : '<span class="badge pending">Pending</span>';
     tr.innerHTML = `
       <td class="key">${escape(k.key)}</td>
-      <td>${escape(k.email || '')}</td>
-      <td class="device">${escape(k.device_name || '')}${k.device_id ? `<br/><small style="opacity:0.6">${escape(k.device_id).slice(0,16)}…</small>` : ''}</td>
+      <td>${escape(k.email || '')}<br/><small class="device">${escape(k.note || '')}</small></td>
+      <td class="expiry">${formatExpiry(k)}</td>
+      <td class="device">${escape(k.device_name || '')}${k.device_id ? `<br/><small>${escape(k.device_id).slice(0,16)}...</small>` : ''}</td>
       <td>${fmtDate(k.created_at)}</td>
       <td>${fmtDate(k.last_heartbeat)}</td>
-      <td>${status}</td>
+      <td>${statusBadge(k.status)}</td>
       <td class="actions">
         <button class="btn small ghost" data-act="copy">Copy</button>
+        <button class="btn small ghost" data-act="edit">Edit</button>
+        <button class="btn small ghost" data-act="extend">+30d</button>
         ${k.device_id ? '<button class="btn small ghost" data-act="reset">Reset device</button>' : ''}
+        ${k.blocked
+          ? '<button class="btn small ghost" data-act="unblock">Unblock</button>'
+          : '<button class="btn small danger" data-act="block">Block</button>'}
         ${k.revoked
           ? '<button class="btn small ghost" data-act="unrevoke">Unrevoke</button>'
           : '<button class="btn small danger" data-act="revoke">Revoke</button>'}
@@ -74,14 +80,28 @@ function renderKeys() {
   }
 }
 
+function statusBadge(status) {
+  const s = status || 'pending';
+  const label = s[0].toUpperCase() + s.slice(1);
+  return `<span class="badge ${escape(s)}">${escape(label)}</span>`;
+}
+
+function formatExpiry(k) {
+  if (!k.expires_at) return '<span style="color:var(--text-faint)">Lifetime</span>';
+  const d = new Date(k.expires_at);
+  const days = typeof k.days_remaining === 'number' ? k.days_remaining : Math.max(0, Math.ceil((k.expires_at - Date.now()) / 86400000));
+  return `${escape(d.toLocaleDateString())}<br/><small class="device">${days} day${days === 1 ? '' : 's'} left</small>`;
+}
+
 function renderEvents(list) {
   const tbody = $('eventsBody');
   tbody.innerHTML = '';
   for (const e of list) {
     const tr = document.createElement('tr');
+    const cls = e.type.includes('block') ? 'blocked' : e.type.includes('expired') ? 'expired' : e.type.includes('revoked') ? 'revoked' : e.type.startsWith('admin') ? 'pending' : 'active';
     tr.innerHTML = `
       <td>${fmtDate(e.at)}</td>
-      <td><span class="badge ${e.type.startsWith('admin') ? 'pending' : (e.type.includes('revoked') ? 'revoked' : 'active')}">${escape(e.type)}</span></td>
+      <td><span class="badge ${cls}">${escape(e.type)}</span></td>
       <td class="key">${escape(e.key || '')}</td>
       <td class="device">${escape(e.ip || '')}</td>
       <td class="device">${escape(e.detail || '')}</td>
@@ -93,6 +113,29 @@ function renderEvents(list) {
 async function handleAction(act, k) {
   if (act === 'copy') {
     navigator.clipboard.writeText(k.key);
+    return;
+  }
+  if (act === 'edit') {
+    openEdit(k);
+    return;
+  }
+  if (act === 'extend') {
+    const days = Number(prompt(`Extend ${k.key} by how many days?`, '30'));
+    if (!Number.isFinite(days) || days <= 0) return;
+    await api(`/admin/api/keys/${encodeURIComponent(k.key)}/extend`, { method: 'POST', body: { days } });
+    loadAll();
+    return;
+  }
+  if (act === 'block') {
+    const reason = prompt(`Block ${k.key}? Reason shown in admin events:`, k.block_reason || '');
+    if (reason === null) return;
+    await api(`/admin/api/keys/${encodeURIComponent(k.key)}/block`, { method: 'POST', body: { reason } });
+    loadAll();
+    return;
+  }
+  if (act === 'unblock') {
+    await api(`/admin/api/keys/${encodeURIComponent(k.key)}/unblock`, { method: 'POST' });
+    loadAll();
     return;
   }
   if (act === 'delete') {
@@ -116,8 +159,17 @@ async function handleAction(act, k) {
     if (!confirm(`Reset device binding for ${k.key}? User can reactivate on a new device.`)) return;
     await api(`/admin/api/keys/${encodeURIComponent(k.key)}/reset-device`, { method: 'POST' });
     loadAll();
-    return;
   }
+}
+
+function openEdit(k) {
+  editingKey = k.key;
+  $('editKey').innerHTML = `<code>${escape(k.key)}</code>`;
+  $('editEmail').value = k.email || '';
+  $('editNote').value = k.note || '';
+  $('editExpiry').value = k.expires_at ? toDateInput(k.expires_at) : '';
+  $('editResult').textContent = '';
+  $('editModal').classList.remove('hidden');
 }
 
 $('refreshBtn').addEventListener('click', loadAll);
@@ -130,6 +182,7 @@ $('logoutBtn').addEventListener('click', async () => {
 $('createBtn').addEventListener('click', () => {
   $('createEmail').value = '';
   $('createNote').value = '';
+  $('createDays').value = '30';
   $('createResult').textContent = '';
   $('createModal').classList.remove('hidden');
 });
@@ -137,7 +190,8 @@ $('createCancel').addEventListener('click', () => $('createModal').classList.add
 $('createOk').addEventListener('click', async () => {
   const email = $('createEmail').value.trim();
   const note  = $('createNote').value.trim();
-  const res = await api('/admin/api/keys', { method: 'POST', body: { email, note } });
+  const days = Number($('createDays').value || 0);
+  const res = await api('/admin/api/keys', { method: 'POST', body: { email, note, days } });
   if (!res.ok) {
     $('createResult').textContent = res.error || 'Failed.';
     return;
@@ -146,11 +200,33 @@ $('createOk').addEventListener('click', async () => {
   loadAll();
 });
 
+$('editCancel').addEventListener('click', () => $('editModal').classList.add('hidden'));
+$('editLifetime').addEventListener('click', () => {
+  $('editExpiry').value = '';
+  $('editResult').textContent = 'Expiry cleared: lifetime license.';
+});
+$('editSave').addEventListener('click', async () => {
+  if (!editingKey) return;
+  const email = $('editEmail').value.trim();
+  const note = $('editNote').value.trim();
+  const expiresAt = $('editExpiry').value ? new Date($('editExpiry').value + 'T23:59:59.999').getTime() : null;
+  const res = await api(`/admin/api/keys/${encodeURIComponent(editingKey)}`, {
+    method: 'PATCH',
+    body: { email, note, expiresAt },
+  });
+  if (!res.ok) {
+    $('editResult').textContent = res.error || 'Failed.';
+    return;
+  }
+  $('editModal').classList.add('hidden');
+  loadAll();
+});
+
 function escape(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]);
 }
 function fmtDate(ms) {
-  if (!ms) return '<span style="color:var(--text-faint)">—</span>';
+  if (!ms) return '<span style="color:var(--text-faint)">-</span>';
   const d = new Date(ms);
   const now = Date.now();
   const diff = (now - ms) / 1000;
@@ -158,6 +234,11 @@ function fmtDate(ms) {
   if (diff < 3600) return Math.floor(diff / 60) + ' min ago';
   if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
   return d.toLocaleString();
+}
+function toDateInput(ms) {
+  const d = new Date(ms);
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
 }
 
 loadAll();

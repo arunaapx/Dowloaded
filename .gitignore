@@ -1,7 +1,15 @@
 node_modules/
 dist/
+web/tmp/
+server/data/
 bin/yt-dlp.exe
 bin/ffmpeg.exe
 bin/*.exe
 .DS_Store
 .claude/
+
+# Secrets — never commit
+.env
+server/.env
+*.env
+!*.env.example

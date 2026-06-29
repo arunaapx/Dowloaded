@@ -15,9 +15,22 @@ function load() {
     const obj = JSON.parse(raw);
     state.keys = obj.keys || {};
     state.events = obj.events || [];
+    migrate();
   } catch (e) {
     console.error('[db] load failed:', e.message);
   }
+}
+
+function migrate() {
+  let changed = false;
+  for (const k of Object.values(state.keys)) {
+    if (typeof k.blocked === 'undefined') { k.blocked = 0; changed = true; }
+    if (typeof k.blocked_at === 'undefined') { k.blocked_at = null; changed = true; }
+    if (typeof k.block_reason === 'undefined') { k.block_reason = null; changed = true; }
+    if (typeof k.expires_at === 'undefined') { k.expires_at = null; changed = true; }
+    if (typeof k.note === 'undefined') { k.note = null; changed = true; }
+  }
+  if (changed) scheduleSave();
 }
 
 let saveTimer = null;
@@ -40,16 +53,20 @@ load();
 // API mirrors better-sqlite3 prepared-statement shape (.run / .get / .all)
 const stmts = {
   insertKey: {
-    run(key, email, created_at, note) {
+    run(key, email, created_at, note, expires_at) {
       state.keys[key] = {
         key,
         email: email || null,
         created_at,
         revoked: 0,
+        blocked: 0,
+        blocked_at: null,
+        block_reason: null,
         device_id: null,
         device_name: null,
         activated_at: null,
         last_heartbeat: null,
+        expires_at: expires_at || null,
         note: note || null,
       };
       scheduleSave();
@@ -68,6 +85,29 @@ const stmts = {
   } },
   revoke:   { run(key) { if (!state.keys[key]) return { changes: 0 }; state.keys[key].revoked = 1; scheduleSave(); return { changes: 1 }; } },
   unrevoke: { run(key) { if (!state.keys[key]) return { changes: 0 }; state.keys[key].revoked = 0; scheduleSave(); return { changes: 1 }; } },
+  block: { run(key, reason, ts) {
+    const r = state.keys[key];
+    if (!r) return { changes: 0 };
+    r.blocked = 1; r.block_reason = reason || null; r.blocked_at = ts || Date.now();
+    scheduleSave();
+    return { changes: 1 };
+  } },
+  unblock: { run(key) {
+    const r = state.keys[key];
+    if (!r) return { changes: 0 };
+    r.blocked = 0; r.block_reason = null; r.blocked_at = null;
+    scheduleSave();
+    return { changes: 1 };
+  } },
+  updateKey: { run(key, email, note, expires_at) {
+    const r = state.keys[key];
+    if (!r) return { changes: 0 };
+    r.email = email || null;
+    r.note = note || null;
+    r.expires_at = expires_at || null;
+    scheduleSave();
+    return { changes: 1 };
+  } },
   delKey:   { run(key) { if (!state.keys[key]) return { changes: 0 }; delete state.keys[key]; scheduleSave(); return { changes: 1 }; } },
   resetDevice: { run(key) {
     const r = state.keys[key];

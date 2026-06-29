@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('api', {
   checkBinaries: () => ipcRenderer.invoke('check-binaries'),
   fetchInfo: (url) => ipcRenderer.invoke('fetch-info', url),
   startDownload: (payload) => ipcRenderer.invoke('start-download', payload),
+  clientExtract: (url) => ipcRenderer.invoke('client-extract', url),
+  clientDownload: (payload) => ipcRenderer.invoke('client-download', payload),
   pauseDownload: (id) => ipcRenderer.invoke('pause-download', id),
   resumeDownload: (id) => ipcRenderer.invoke('resume-download', id),
   cancelDownload: (id) => ipcRenderer.invoke('cancel-download', id),
@@ -27,5 +29,6 @@ contextBridge.exposeInMainWorld('api', {
   licenseActivate:  (key)   => ipcRenderer.invoke('license-activate', key),
   licenseClear:     () => ipcRenderer.invoke('license-clear'),
   licenseHeartbeat: () => ipcRenderer.invoke('license-heartbeat'),
+  onLicenseInvalidated: (cb) => ipcRenderer.on('license-invalidated', (_e, d) => cb(d || {})),
   onLicenseRevoked: (cb) => ipcRenderer.on('license-revoked', () => cb()),
 });

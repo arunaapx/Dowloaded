@@ -3,13 +3,14 @@
   z-index: 2147483647 !important;
   top: 0; right: 0;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif !important;
-  pointer-events: auto;
+  pointer-events: none;
   opacity: 0;
   transform: translateY(-4px);
   transition: opacity 0.18s ease, transform 0.18s ease;
 }
 .velox-dl-btn.velox-visible,
 .velox-dl-btn.velox-open {
+  pointer-events: auto;
   opacity: 1;
   transform: translateY(0);
 }
@@ -55,6 +56,49 @@
 }
 .velox-dl-btn.velox-open .velox-caret { transform: rotate(180deg); }
 
+.velox-count {
+  min-width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(12, 18, 32, 0.18);
+  color: #0c1220 !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+.velox-count:empty { display: none; }
+
+.velox-page-btn {
+  top: auto !important;
+  right: 10px !important;
+  bottom: 10px !important;
+  opacity: 1;
+  transform: none;
+}
+.velox-page-btn .velox-pill {
+  width: 46px;
+  height: 38px;
+  justify-content: center;
+  gap: 4px;
+  padding: 0;
+  border-radius: 12px !important;
+}
+.velox-page-btn .velox-label,
+.velox-page-btn .velox-caret {
+  display: none;
+}
+.velox-page-btn.velox-open .velox-label,
+.velox-page-btn.velox-open .velox-caret {
+  display: inline;
+}
+.velox-page-btn.velox-open .velox-pill {
+  width: auto;
+  padding: 0 12px;
+}
+
 .velox-menu {
   position: absolute;
   top: calc(100% + 8px);
@@ -74,6 +118,13 @@
   animation: velox-menu-in 0.14s ease;
 }
 .velox-dl-btn.velox-open .velox-menu { display: flex; }
+.velox-page-btn .velox-menu {
+  top: auto;
+  bottom: calc(100% + 8px);
+  width: min(340px, calc(100vw - 20px));
+  max-height: min(460px, calc(100vh - 90px));
+  overflow: hidden;
+}
 @keyframes velox-menu-in {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -101,8 +152,108 @@
   background: rgba(108, 196, 255, 0.14) !important;
   color: #6cc4ff !important;
 }
-.velox-mi-ico { font-size: 13px; line-height: 1; }
+.velox-mi-ico {
+  min-width: 38px;
+  color: #98a2b3 !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
 .velox-mi-label { flex: 1; }
+
+.velox-detected-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 9px 7px;
+  color: #e6ebf3 !important;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  line-height: 1.2 !important;
+  text-shadow: none;
+}
+
+.velox-detected-total {
+  color: #98a2b3 !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+}
+
+.velox-detected-list {
+  display: grid;
+  gap: 5px;
+  max-height: 250px;
+  overflow: auto;
+  padding: 0 5px 4px;
+}
+
+.velox-detected-row {
+  display: grid !important;
+  gap: 3px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 9px;
+  background: rgba(255, 255, 255, 0.045) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
+  color: #e6ebf3 !important;
+  cursor: pointer;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+  text-align: left !important;
+  text-shadow: none;
+  transition: background 0.12s, border-color 0.12s, transform 0.12s;
+}
+
+.velox-detected-row:hover,
+.velox-detected-row:focus {
+  background: rgba(108, 196, 255, 0.13) !important;
+  border-color: rgba(108, 196, 255, 0.42) !important;
+  outline: none;
+}
+
+.velox-detected-row:active {
+  transform: scale(0.99);
+}
+
+.velox-detected-title {
+  overflow: hidden;
+  color: #f5f8ff !important;
+  font-size: 11px !important;
+  font-weight: 750 !important;
+  line-height: 1.3 !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.velox-detected-meta {
+  overflow: hidden;
+  color: #98a2b3 !important;
+  font-size: 10px !important;
+  line-height: 1.25 !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.velox-detected-empty,
+.velox-menu-caption {
+  padding: 8px 9px;
+  color: #98a2b3 !important;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+  font-size: 10px !important;
+  font-weight: 650 !important;
+  line-height: 1.25 !important;
+  text-shadow: none;
+}
+
+.velox-menu-caption {
+  padding-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 
 .velox-sep {
   height: 1px;

@@ -4,13 +4,18 @@ const fs = require('fs');
 const os = require('os');
 const http = require('http');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const { checkBinaries: coreCheckBinaries } = require('./core/downloader');
 
 let mainWindow;
 const BRIDGE_PORT = 47813;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HEARTBEAT_INTERVAL_MINUTES = Math.max(1, parseInt(process.env.HEARTBEAT_INTERVAL_MINUTES || '5', 10));
 
+// Local server is the default so admin-created keys activate during development.
+// For a hosted license server, set LICENSE_SERVER_URL at launch or change this
+// fallback URL before shipping a packaged build.
 const LICENSE_SERVER_URL =
-  process.env.LICENSE_SERVER_URL || 'https://api.example.com'; // <-- replace before shipping
+  (process.env.LICENSE_SERVER_URL || 'http://localhost:4000').replace(/\/+$/, '');
 const LICENSE_BYPASS = process.env.LICENSE_BYPASS === '1';
 
 const HISTORY_PATH = () => path.join(app.getPath('userData'), 'history.json');
@@ -33,6 +38,55 @@ function writeLicense(obj) {
 }
 function clearLicense() {
   try { fs.unlinkSync(LICENSE_PATH()); } catch {}
+}
+
+function normalizeLicenseKey(key) {
+  return String(key || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function daysRemaining(expiresAt) {
+  if (!expiresAt) return null;
+  return Math.max(0, Math.ceil((expiresAt - Date.now()) / DAY_MS));
+}
+
+function profileFromLicense(lic) {
+  return {
+    email: lic.email || '',
+    key: lic.key || '',
+    deviceId: lic.deviceId || '',
+    expiresAt: lic.expiresAt || null,
+    daysRemaining: daysRemaining(lic.expiresAt),
+    status: lic.status || 'active',
+    activatedAt: lic.activatedAt || null,
+  };
+}
+
+function localExpiryResult(lic) {
+  if (lic?.expiresAt && lic.expiresAt <= Date.now()) {
+    clearLicense();
+    return { licensed: false, reason: 'expired', message: 'Your license has expired.' };
+  }
+  return null;
+}
+
+function writeLicenseFromServer(existing, payload, fallbackKey, deviceIdValue) {
+  const profile = payload.profile || {};
+  const hasProfileEmail = Object.prototype.hasOwnProperty.call(profile, 'email');
+  const hasProfileExpiry = Object.prototype.hasOwnProperty.call(profile, 'expiresAt');
+  const hasBodyExpiry = Object.prototype.hasOwnProperty.call(payload, 'expiresAt');
+  const next = {
+    ...(existing || {}),
+    key: normalizeLicenseKey(profile.key || payload.key || fallbackKey || existing?.key || ''),
+    token: payload.token || existing?.token || '',
+    email: hasProfileEmail ? (profile.email || '') : (payload.email || existing?.email || ''),
+    deviceId: deviceIdValue || existing?.deviceId || '',
+    expiresAt: hasProfileExpiry ? (profile.expiresAt || null) : hasBodyExpiry ? (payload.expiresAt || null) : (existing?.expiresAt || null),
+    status: profile.status || existing?.status || 'active',
+    activatedAt: existing?.activatedAt || Date.now(),
+    lastVerifiedAt: Date.now(),
+  };
+  writeLicense(next);
+  return next;
 }
 
 function deviceId() {
@@ -64,7 +118,7 @@ function postJson(urlPath, body) {
     try {
       const req = net.request({
         method: 'POST',
-        url: LICENSE_SERVER_URL.replace(/\/$/, '') + urlPath,
+        url: LICENSE_SERVER_URL + urlPath,
       });
       req.setHeader('Content-Type', 'application/json');
       let data = '';
@@ -84,31 +138,72 @@ function postJson(urlPath, body) {
   });
 }
 
+// Like postJson but attaches the license token — used for the gated
+// extraction endpoints (/api/extract, /api/resolve) in the thin-client model.
+function postJsonAuth(urlPath, body, token) {
+  return new Promise((resolve) => {
+    try {
+      const req = net.request({ method: 'POST', url: LICENSE_SERVER_URL + urlPath });
+      req.setHeader('Content-Type', 'application/json');
+      if (token) req.setHeader('Authorization', `Bearer ${token}`);
+      let data = '';
+      req.on('response', (res) => {
+        res.on('data', (c) => (data += c.toString()));
+        res.on('end', () => {
+          try { resolve({ status: res.statusCode, body: JSON.parse(data || '{}') }); }
+          catch { resolve({ status: res.statusCode, body: { ok: false, error: 'parse' } }); }
+        });
+      });
+      req.on('error', (e) => resolve({ status: 0, body: { ok: false, error: e.message } }));
+      req.write(JSON.stringify(body || {}));
+      req.end();
+    } catch (e) {
+      resolve({ status: 0, body: { ok: false, error: e.message } });
+    }
+  });
+}
+
 async function licenseStatus() {
   if (LICENSE_BYPASS) return { licensed: true, bypass: true };
-  const lic = readLicense();
+  let lic = readLicense();
   if (!lic || !lic.token) return { licensed: false, reason: 'no-license' };
-  return { licensed: true, email: lic.email, key: lic.key };
+  const expired = localExpiryResult(lic);
+  if (expired) return expired;
+
+  const pulse = await doHeartbeat();
+  if (!pulse.ok && !pulse.transient) {
+    return {
+      licensed: false,
+      reason: pulse.reason || 'license-invalid',
+      message: pulse.message || pulse.error || 'License is not active.',
+    };
+  }
+  lic = readLicense() || lic;
+  return { licensed: true, profile: profileFromLicense(lic), transient: pulse.transient || false };
 }
 
 async function doSignup(email) {
   const r = await postJson('/api/signup', { email });
-  if (r.status === 200 && r.body && r.body.ok) return { ok: true, key: r.body.key };
+  if (r.status === 200 && r.body && r.body.ok) {
+    return { ok: true, key: r.body.key, profile: r.body.profile || null, expiresAt: r.body.expiresAt || null };
+  }
+  if (r.status === 0) {
+    return { ok: false, error: `Cannot reach license server at ${LICENSE_SERVER_URL}. Start the server or set LICENSE_SERVER_URL.` };
+  }
   return { ok: false, error: r.body?.error || `signup failed (${r.status})` };
 }
 
 async function doActivate(key) {
+  const normalizedKey = normalizeLicenseKey(key);
+  if (!normalizedKey) return { ok: false, error: 'Enter a key.' };
   const did = deviceId();
-  const r = await postJson('/api/activate', { key, deviceId: did, deviceName: deviceName() });
+  const r = await postJson('/api/activate', { key: normalizedKey, deviceId: did, deviceName: deviceName() });
   if (r.status === 200 && r.body?.ok) {
-    writeLicense({
-      key,
-      token: r.body.token,
-      email: r.body.email || '',
-      deviceId: did,
-      activatedAt: Date.now(),
-    });
-    return { ok: true };
+    const lic = writeLicenseFromServer(null, r.body, normalizedKey, did);
+    return { ok: true, profile: profileFromLicense(lic) };
+  }
+  if (r.status === 0) {
+    return { ok: false, error: `Cannot reach license server at ${LICENSE_SERVER_URL}. Start the server or set LICENSE_SERVER_URL.` };
   }
   return { ok: false, error: r.body?.error || `activate failed (${r.status})` };
 }
@@ -116,16 +211,22 @@ async function doActivate(key) {
 async function doHeartbeat() {
   const lic = readLicense();
   if (!lic || !lic.token) return { ok: false, revoked: false, reason: 'no-license' };
+  const expired = localExpiryResult(lic);
+  if (expired) return { ok: false, revoked: false, expired: true, reason: 'expired', message: expired.message };
   const r = await postJson('/api/heartbeat', { token: lic.token });
-  if (r.status === 200 && r.body?.ok) return { ok: true, revoked: false };
-  if (r.status === 403 && r.body?.revoked) {
+  if (r.status === 200 && r.body?.ok) {
+    const updated = writeLicenseFromServer(lic, r.body, lic.key, lic.deviceId);
+    return { ok: true, revoked: false, profile: profileFromLicense(updated) };
+  }
+  if (r.status === 403 && (r.body?.revoked || r.body?.blocked || r.body?.expired)) {
     clearLicense();
-    return { ok: false, revoked: true };
+    const reason = r.body.revoked ? 'revoked' : r.body.blocked ? 'blocked' : 'expired';
+    return { ok: false, revoked: !!r.body.revoked, blocked: !!r.body.blocked, expired: !!r.body.expired, reason, message: r.body.error || `license ${reason}` };
   }
   if (r.status === 401 || r.status === 409) {
     // token invalid or device mismatch — force re-activation
     clearLicense();
-    return { ok: false, revoked: false, reason: 'token-invalid' };
+    return { ok: false, revoked: false, reason: 'token-invalid', message: 'Please activate again.' };
   }
   // transient (network down) — don't lock
   return { ok: true, revoked: false, transient: true };
@@ -136,19 +237,18 @@ function startHeartbeatLoop() {
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   heartbeatTimer = setInterval(async () => {
     const r = await doHeartbeat();
-    if (r.revoked && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('license-revoked');
+    if (!r.ok && !r.transient && mainWindow && !mainWindow.isDestroyed()) {
+      notifyLicenseInvalidated(r);
     }
-  }, 30 * 60 * 1000); // 30 min
+  }, HEARTBEAT_INTERVAL_MINUTES * 60 * 1000);
 }
 
-function resolveBinary(name) {
-  const exe = process.platform === 'win32' ? `${name}.exe` : name;
-  const local = app.isPackaged
-    ? path.join(process.resourcesPath, 'bin', exe)
-    : path.join(__dirname, 'bin', exe);
-  if (fs.existsSync(local)) return local;
-  return name;
+// Electron-specific bin/ location (packaged build keeps binaries under resources).
+// The core downloader reads this through VELOX_BIN_DIR, set once in whenReady().
+function electronBinDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'bin')
+    : path.join(__dirname, 'bin');
 }
 
 function createWindow() {
@@ -221,6 +321,10 @@ function startBridgeServer() {
               mode: payload.mode === 'audio' ? 'audio' : 'video',
               quality: payload.quality || '1080p',
               audioBitrate: payload.audioBitrate || '192',
+              referer: typeof payload.referer === 'string' ? payload.referer : '',
+              sourcePage: typeof payload.sourcePage === 'string' ? payload.sourcePage : '',
+              detectedUrl: typeof payload.detectedUrl === 'string' ? payload.detectedUrl : '',
+              title: typeof payload.title === 'string' ? payload.title : '',
             });
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -244,18 +348,20 @@ function startBridgeServer() {
 }
 
 app.whenReady().then(async () => {
+  // Let the core downloader resolve bundled binaries in packaged builds.
+  process.env.VELOX_BIN_DIR = electronBinDir();
   createWindow();
   startBridgeServer();
 
   // Background heartbeat (every 30 min)
   startHeartbeatLoop();
 
-  // Immediate heartbeat after window loads — if revoked, ask renderer to show lock
+  // Immediate heartbeat after window loads — if admin changed access, ask renderer to show lock
   mainWindow.webContents.once('did-finish-load', async () => {
     if (LICENSE_BYPASS) return;
     const r = await doHeartbeat();
-    if (r.revoked && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('license-revoked');
+    if (!r.ok && !r.transient && mainWindow && !mainWindow.isDestroyed()) {
+      notifyLicenseInvalidated(r);
     }
   });
 
@@ -294,63 +400,20 @@ ipcMain.handle('open-external', async (_e, url) => {
   shell.openExternal(url);
 });
 
+// Thin client: search + supported-sites come from the license-gated server,
+// so this app ships no yt-dlp of its own.
 ipcMain.handle('list-extractors', async () => {
-  return new Promise((resolve) => {
-    const ytdlp = resolveBinary('yt-dlp');
-    const proc = spawn(ytdlp, ['--color', 'never', '--list-extractors'], {
-      windowsHide: true,
-      env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' },
-    });
-    let out = '', err = '';
-    proc.stdout.on('data', (d) => (out += d.toString()));
-    proc.stderr.on('data', (d) => (err += d.toString()));
-    proc.on('error', (e) => resolve({ ok: false, error: e.message }));
-    proc.on('close', (code) => {
-      if (code !== 0) return resolve({ ok: false, error: err || `yt-dlp exited ${code}` });
-      // Strip ANSI escape sequences defensively
-      const ansi = /\x1B\[[0-?]*[ -/]*[@-~]/g;
-      const list = out
-        .replace(ansi, '')
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      resolve({ ok: true, list });
-    });
-  });
+  const lic = readLicense();
+  const r = await postJsonAuth('/api/extractors', {}, lic && lic.token);
+  if (r.status === 0) return { ok: false, error: `Cannot reach server at ${LICENSE_SERVER_URL}.` };
+  return r.body || { ok: false, error: 'could not list sites' };
 });
 
 ipcMain.handle('yt-search', async (_e, { query, limit }) => {
-  return new Promise((resolve) => {
-    const q = String(query || '').trim();
-    if (!q) return resolve({ ok: false, error: 'empty query' });
-    const n = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 25);
-    const ytdlp = resolveBinary('yt-dlp');
-    const args = ['-J', '--flat-playlist', '--no-warnings', `ytsearch${n}:${q}`];
-    const proc = spawn(ytdlp, args, { windowsHide: true });
-    let out = '', err = '';
-    proc.stdout.on('data', (d) => (out += d.toString()));
-    proc.stderr.on('data', (d) => (err += d.toString()));
-    proc.on('error', (e) => resolve({ ok: false, error: e.message }));
-    proc.on('close', (code) => {
-      if (code !== 0) return resolve({ ok: false, error: err || `yt-dlp exited ${code}` });
-      try {
-        const json = JSON.parse(out);
-        const items = (json.entries || []).map((e) => ({
-          id: e.id,
-          title: e.title || '',
-          url: e.url && /^https?:/i.test(e.url) ? e.url : `https://www.youtube.com/watch?v=${e.id}`,
-          channel: e.channel || e.uploader || '',
-          duration: e.duration || 0,
-          thumbnail: e.thumbnails && e.thumbnails.length
-            ? e.thumbnails[e.thumbnails.length - 1].url
-            : (e.thumbnail || `https://i.ytimg.com/vi/${e.id}/mqdefault.jpg`),
-        }));
-        resolve({ ok: true, items });
-      } catch (e) {
-        resolve({ ok: false, error: 'Failed to parse search results' });
-      }
-    });
-  });
+  const lic = readLicense();
+  const r = await postJsonAuth('/api/search', { query, limit }, lic && lic.token);
+  if (r.status === 0) return { ok: false, error: `Cannot reach server at ${LICENSE_SERVER_URL}.` };
+  return r.body || { ok: false, error: 'search failed' };
 });
 
 ipcMain.handle('read-clipboard', () => {
@@ -358,222 +421,207 @@ ipcMain.handle('read-clipboard', () => {
   return clipboard.readText();
 });
 
+// The client only needs ffmpeg/ffprobe (for merge/convert) — never yt-dlp.
 ipcMain.handle('check-binaries', () => {
-  const ytdlp = resolveBinary('yt-dlp');
-  const ffmpeg = resolveBinary('ffmpeg');
-  return {
-    ytdlp,
-    ffmpeg,
-    ytdlpExists: fs.existsSync(ytdlp) || ytdlp === 'yt-dlp',
-    ffmpegExists: fs.existsSync(ffmpeg) || ffmpeg === 'ffmpeg',
-    binDir: app.isPackaged
-      ? path.join(process.resourcesPath, 'bin')
-      : path.join(__dirname, 'bin'),
-  };
+  const info = coreCheckBinaries(electronBinDir());
+  info.clientReady = info.ffmpegExists && info.ffprobeExists; // yt-dlp not required here
+  return info;
 });
 
 ipcMain.handle('fetch-info', async (_e, url) => {
-  return new Promise((resolve) => {
-    const ytdlp = resolveBinary('yt-dlp');
-    const args = ['-J', '--no-warnings', '--no-playlist', url];
-    const proc = spawn(ytdlp, args, { windowsHide: true });
-    let out = '';
-    let err = '';
-    proc.stdout.on('data', (d) => (out += d.toString()));
-    proc.stderr.on('data', (d) => (err += d.toString()));
-    proc.on('error', (e) => resolve({ ok: false, error: e.message }));
-    proc.on('close', (code) => {
-      if (code !== 0) return resolve({ ok: false, error: err || `yt-dlp exited ${code}` });
-      try {
-        const json = JSON.parse(out);
-        resolve({
-          ok: true,
-          title: json.title,
-          uploader: json.uploader || json.channel || '',
-          duration: json.duration || 0,
-          thumbnail: json.thumbnail || '',
-          isPlaylist: json._type === 'playlist',
-        });
-      } catch (e) {
-        resolve({ ok: false, error: 'Failed to parse video info' });
-      }
-    });
-  });
+  const lic = readLicense();
+  const r = await postJsonAuth('/api/extract', { url }, lic && lic.token);
+  if (!(r.status === 200 && r.body && r.body.ok && r.body.meta)) {
+    return { ok: false, error: r.body?.error || 'could not read this link' };
+  }
+  const m = r.body.meta;
+  return { ok: true, title: m.title, uploader: m.uploader, duration: m.duration, thumbnail: m.thumbnail, isPlaylist: m.isPlaylist };
 });
 
-const activeJobs = new Map();
-const jobConfigs = new Map();
+// renderer job id -> { jobId, payload, sender, sseReq, paused }
+const clientJobs = new Map();
 
-function buildArgs(payload) {
-  const {
-    url, folder, quality, mode, audioBitrate, isPlaylist,
-    vContainer, vCodec, vBitrate, aFormat,
-  } = payload;
-  const ffmpeg = resolveBinary('ffmpeg');
-  const args = [];
-
-  if (mode === 'audio') {
-    const fmt = ['mp3', 'm4a', 'opus', 'flac'].includes(aFormat) ? aFormat : 'mp3';
-    args.push('-x', '--audio-format', fmt);
-    if (fmt !== 'flac') {
-      args.push('--audio-quality', `${audioBitrate || 192}K`);
+function stopActiveDownloads(reason) {
+  const lic = readLicense();
+  for (const [id, cj] of clientJobs.entries()) {
+    clientJobs.delete(id);
+    try { cj.sseReq && cj.sseReq.abort(); } catch {}
+    postJsonAuth(`/api/download/${cj.jobId}/cancel`, {}, lic && lic.token);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('download-done', { id, ok: false, error: reason || 'License is not active.' });
     }
-  } else {
-    const heightCap = {
-      best: null,
-      '4k': 2160,
-      '1440p': 1440,
-      '1080p': 1080,
-      '720p': 720,
-      '480p': 480,
-      '360p': 360,
-    }[quality];
-    const h = heightCap;
-    const cap = h ? `[height<=${h}]` : '';
-
-    const codecFilter = {
-      h264: '[vcodec^=avc1]',
-      av1: '[vcodec^=av01]',
-      vp9: '[vcodec^=vp9]',
-    }[vCodec] || '';
-
-    const br = Number(vBitrate) > 0 ? `[tbr<=${vBitrate}]` : '';
-
-    const format = codecFilter
-      ? [
-          `bv*${codecFilter}${cap}${br}+ba`,
-          `bv*${codecFilter}${cap}+ba`,
-          `b${codecFilter}${cap}`,
-          `bv*${cap}${br}+ba`,
-          `b${cap}`,
-          'best',
-        ].join('/')
-      : [
-          `bv*[vcodec^=avc1]${cap}${br}+ba[acodec^=mp4a]`,
-          `bv*[vcodec^=avc1]${cap}+ba`,
-          `bv*[ext=mp4]${cap}+ba[ext=m4a]`,
-          `bv*${cap}[vcodec!*=av01]+ba`,
-          `b${cap}[vcodec^=avc1]`,
-          `b${cap}[vcodec!*=av01]`,
-          `b${cap}`,
-          `bv*${cap}`,
-          'best',
-        ].join('/');
-
-    const container = ['mp4', 'mkv', 'webm'].includes(vContainer) ? vContainer : 'mp4';
-    const merge =
-      container === 'webm' ? 'webm/mkv/mp4'
-      : container === 'mkv' ? 'mkv/mp4'
-      : 'mp4/mkv';
-
-    args.push('-f', format, '--merge-output-format', merge);
   }
-
-  args.push('-o', path.join(folder, '%(title)s [%(id)s].%(ext)s'));
-  args.push('--newline', '--no-warnings', '--progress', '--continue');
-  if (!isPlaylist) args.push('--no-playlist');
-  if (fs.existsSync(ffmpeg)) args.push('--ffmpeg-location', ffmpeg);
-  args.push(url);
-
-  return args;
 }
 
-function spawnDownload(id, payload, sender) {
-  const ytdlp = resolveBinary('yt-dlp');
-  const args = buildArgs(payload);
+function notifyLicenseInvalidated(result) {
+  const message = result?.message || 'License is not active.';
+  stopActiveDownloads(message);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('license-invalidated', { reason: result?.reason || 'license-invalid', message });
+    mainWindow.webContents.send('license-revoked');
+  }
+}
 
-  const send = (channel, data) => {
-    if (sender && !sender.isDestroyed()) sender.send(channel, { id, ...data });
-  };
+async function requireActiveLicenseForWork() {
+  if (LICENSE_BYPASS) return { ok: true };
+  const r = await doHeartbeat();
+  if (r.ok || r.transient) return { ok: true };
+  notifyLicenseInvalidated(r);
+  return { ok: false, error: r.message || 'License is not active.' };
+}
 
-  const proc = spawn(ytdlp, args, { windowsHide: true });
-  activeJobs.set(id, proc);
+// ---------- thin-client model: server extracts, device downloads ----------
 
-  let lastFile = '';
-  let lastPercent = 0;
+// Probe a URL via the license-gated server endpoint → metadata + option menu.
+ipcMain.handle('client-extract', async (_e, url) => {
+  if (LICENSE_BYPASS) return { ok: false, error: 'extraction requires a server connection' };
+  const lic = readLicense();
+  const r = await postJsonAuth('/api/extract', { url: String(url || '') }, lic && lic.token);
+  if (r.status === 0) return { ok: false, error: `Cannot reach server at ${LICENSE_SERVER_URL}.` };
+  if (r.status === 401 || r.status === 403 || r.status === 409) {
+    notifyLicenseInvalidated({ reason: 'license-invalid', message: r.body?.error || 'License is not active.' });
+    return { ok: false, error: r.body?.error || 'License is not active.' };
+  }
+  return r.body || { ok: false, error: 'extract failed' };
+});
 
-  proc.stdout.on('data', (data) => {
-    const text = data.toString();
-    text.split(/\r?\n/).forEach((line) => {
-      if (!line.trim()) return;
-      const progressMatch = line.match(/\[download\]\s+(\d+(?:\.\d+)?)%(?:\s+of\s+~?\s*([^\s]+))?(?:\s+at\s+([^\s]+))?(?:\s+ETA\s+([^\s]+))?/);
-      if (progressMatch) {
-        lastPercent = parseFloat(progressMatch[1]);
-        send('download-progress', {
-          percent: lastPercent,
-          size: progressMatch[2] || '',
-          speed: progressMatch[3] || '',
-          eta: progressMatch[4] || '',
+function parseDispositionName(header) {
+  if (!header) return '';
+  const star = header.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
+  if (star) { try { return decodeURIComponent(star[1].replace(/"/g, '').trim()); } catch {} }
+  const plain = header.match(/filename="?([^"]+)"?/i);
+  return plain ? plain[1].trim() : '';
+}
+
+// Consume a Server-Sent Events stream over Electron's net. Returns the request
+// so it can be aborted.
+function openSse(urlPath, token, handlers) {
+  const req = net.request({ method: 'GET', url: LICENSE_SERVER_URL + urlPath });
+  if (token) req.setHeader('Authorization', `Bearer ${token}`);
+  req.on('response', (res) => {
+    let buf = '';
+    res.on('data', (c) => {
+      buf += c.toString();
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const frame = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        let ev = 'message', data = '';
+        frame.split(/\r?\n/).forEach((line) => {
+          if (line.startsWith('event:')) ev = line.slice(6).trim();
+          else if (line.startsWith('data:')) data += line.slice(5).trim();
         });
-        return;
+        if (data) { try { handlers.onEvent(ev, JSON.parse(data)); } catch {} }
       }
-      const destMatch = line.match(/\[download\] Destination: (.+)/);
-      if (destMatch) {
-        lastFile = destMatch[1].trim();
-        send('download-log', { message: `→ ${path.basename(lastFile)}` });
-        return;
-      }
-      const mergeMatch = line.match(/\[Merger\] Merging formats into "(.+)"/);
-      if (mergeMatch) {
-        lastFile = mergeMatch[1].replace(/^"|"$/g, '');
-        send('download-log', { message: 'Merging audio + video…' });
-        return;
-      }
-      if (line.includes('[ExtractAudio]')) {
-        send('download-log', { message: 'Extracting audio…' });
-      }
-      send('download-log', { message: line.trim() });
     });
+    res.on('end', () => handlers.onEnd && handlers.onEnd());
   });
+  req.on('error', (e) => handlers.onError && handlers.onError(e));
+  req.end();
+  return req;
+}
 
-  proc.stderr.on('data', (data) => {
-    send('download-log', { message: data.toString().trim(), error: true });
-  });
-
-  proc.on('error', (e) => {
-    activeJobs.delete(id);
-    send('download-done', { ok: false, error: e.message });
-  });
-
-  proc.on('close', (code) => {
-    const wasPaused = !activeJobs.has(id);
-    activeJobs.delete(id);
-    if (wasPaused) return;
-    const ok = code === 0;
-    send('download-done', { ok, code, file: lastFile, percent: lastPercent });
+// Stream the finished file from the server to the user's chosen folder.
+function fetchFileToFolder(jobId, token, folder, fallbackName) {
+  return new Promise((resolve, reject) => {
+    const req = net.request({ method: 'GET', url: `${LICENSE_SERVER_URL}/api/download/${jobId}/file` });
+    if (token) req.setHeader('Authorization', `Bearer ${token}`);
+    req.on('response', (res) => {
+      if (res.statusCode !== 200) { res.on('data', () => {}); res.on('end', () => reject(new Error(`file transfer ${res.statusCode}`))); return; }
+      const name = parseDispositionName(res.headers['content-disposition']) || fallbackName || 'video';
+      const dest = path.join(folder, name);
+      const out = fs.createWriteStream(dest);
+      res.on('data', (c) => out.write(c));
+      res.on('end', () => out.end(() => resolve(dest)));
+      res.on('error', reject);
+      out.on('error', reject);
+    });
+    req.on('error', reject);
+    req.end();
   });
 }
 
-ipcMain.handle('start-download', async (event, payload) => {
-  jobConfigs.set(payload.id, payload);
-  spawnDownload(payload.id, payload, event.sender);
-  return { ok: true };
-});
+// Server runs the full yt-dlp download (reliable for YouTube/HLS/pornhub/merge),
+// streams progress here over SSE, then we pull the finished file to disk.
+async function startServerDownload(id, payload, sender) {
+  const lic = readLicense();
+  const token = lic && lic.token;
+  const send = (channel, data) => { if (sender && !sender.isDestroyed()) sender.send(channel, { id, ...data }); };
 
-ipcMain.handle('pause-download', (_e, id) => {
-  const proc = activeJobs.get(id);
-  if (proc) {
-    activeJobs.delete(id);
-    proc.kill();
-    return true;
+  const r = await postJsonAuth('/api/download/create', {
+    url: payload.url, mode: payload.mode, quality: payload.quality,
+    audioBitrate: payload.audioBitrate, aFormat: payload.aFormat,
+    vContainer: payload.vContainer, vCodec: payload.vCodec, vBitrate: payload.vBitrate,
+    referer: payload.referer,
+  }, token);
+  if (r.status === 0) return { ok: false, error: `Cannot reach server at ${LICENSE_SERVER_URL}.` };
+  if (r.status === 401 || r.status === 403 || r.status === 409) {
+    notifyLicenseInvalidated({ reason: 'license-invalid', message: r.body?.error || 'License is not active.' });
+    return { ok: false, error: r.body?.error || 'License is not active.' };
   }
-  return false;
+  if (!(r.status === 200 && r.body && r.body.ok)) return { ok: false, error: r.body?.error || `download failed (${r.status})` };
+
+  const jobId = r.body.id;
+  const entry = { jobId, payload, sender, sseReq: null, paused: false };
+  clientJobs.set(id, entry);
+
+  entry.sseReq = openSse(`/api/download/${jobId}/events`, token, {
+    onEvent: async (ev, d) => {
+      if (ev === 'update') send('download-progress', { percent: d.percent, size: d.size, speed: d.speed, eta: d.eta });
+      else if (ev === 'log') send('download-log', { message: d.message, error: d.error });
+      else if (ev === 'end') {
+        if (d.status === 'done') {
+          send('download-log', { message: 'Saving to your device…' });
+          try {
+            const dest = await fetchFileToFolder(jobId, token, payload.folder, payload.title);
+            send('download-done', { ok: true, file: dest, percent: 100 });
+          } catch (e) {
+            send('download-done', { ok: false, error: `file transfer failed: ${e.message}` });
+          }
+        } else {
+          send('download-done', { ok: false, error: d.error || 'download failed' });
+        }
+        clientJobs.delete(id);
+      }
+    },
+  });
+  return { ok: true };
+}
+
+ipcMain.handle('client-download', async (event, payload) => {
+  const license = await requireActiveLicenseForWork();
+  if (!license.ok) return license;
+  return startServerDownload(payload.id, payload, event.sender);
 });
 
-ipcMain.handle('resume-download', (event, id) => {
-  const cfg = jobConfigs.get(id);
-  if (!cfg) return false;
-  spawnDownload(id, cfg, event.sender);
+// Pause: stop the server job + our stream; keep the config so resume can restart.
+ipcMain.handle('pause-download', async (_e, id) => {
+  const cj = clientJobs.get(id);
+  if (!cj) return false;
+  try { cj.sseReq && cj.sseReq.abort(); } catch {}
+  const lic = readLicense();
+  postJsonAuth(`/api/download/${cj.jobId}/cancel`, {}, lic && lic.token);
+  cj.paused = true;
   return true;
 });
 
-ipcMain.handle('cancel-download', (_e, id) => {
-  const proc = activeJobs.get(id);
-  if (proc) {
-    activeJobs.delete(id);
-    proc.kill();
+// Resume: start a fresh server job for the same renderer id.
+ipcMain.handle('resume-download', async (event, id) => {
+  const license = await requireActiveLicenseForWork();
+  if (!license.ok) return false;
+  const cj = clientJobs.get(id);
+  if (!cj) return false;
+  const r = await startServerDownload(id, cj.payload, event.sender);
+  return !!r.ok;
+});
+
+ipcMain.handle('cancel-download', async (_e, id) => {
+  const cj = clientJobs.get(id);
+  if (cj) {
+    try { cj.sseReq && cj.sseReq.abort(); } catch {}
+    const lic = readLicense();
+    postJsonAuth(`/api/download/${cj.jobId}/cancel`, {}, lic && lic.token);
+    clientJobs.delete(id);
   }
-  jobConfigs.delete(id);
   return true;
 });
 
@@ -601,7 +649,11 @@ ipcMain.handle('history-save', (_e, list) => {
 ipcMain.handle('license-status',   () => licenseStatus());
 ipcMain.handle('license-signup',   (_e, email) => doSignup(String(email || '').trim()));
 ipcMain.handle('license-activate', (_e, key)   => doActivate(String(key || '').trim()));
-ipcMain.handle('license-clear',    () => { clearLicense(); return { ok: true }; });
+ipcMain.handle('license-clear',    () => {
+  clearLicense();
+  stopActiveDownloads('Signed out.');
+  return { ok: true };
+});
 ipcMain.handle('license-heartbeat',() => doHeartbeat());
 
 ipcMain.handle('window-control', (_e, action) => {

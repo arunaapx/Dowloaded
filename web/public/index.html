@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Velox Downloader</title>
+  <meta name="description" content="Download videos and audio from 1000+ sites." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0a0f1a" />
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Velox" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">▶</span>
+      <span class="brand-name">Velox</span>
+    </div>
+    <button id="installBtn" class="ghost-btn" hidden>Install app</button>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <label class="field-label" for="url">Video link</label>
+      <div class="url-row">
+        <input id="url" type="url" inputmode="url" autocomplete="off"
+               placeholder="Paste a YouTube / TikTok / Instagram link…" />
+        <button id="pasteBtn" class="ghost-btn" title="Paste">Paste</button>
+      </div>
+
+      <div class="seg" id="modeSeg" role="tablist">
+        <button class="seg-btn active" data-mode="video">Video</button>
+        <button class="seg-btn" data-mode="audio">Audio (MP3)</button>
+      </div>
+
+      <div class="options" id="videoOptions">
+        <label class="field-label">Quality</label>
+        <div class="chips" id="qualityChips">
+          <button class="chip" data-q="best">Best</button>
+          <button class="chip" data-q="4k">4K</button>
+          <button class="chip" data-q="1440p">1440p</button>
+          <button class="chip active" data-q="1080p">1080p</button>
+          <button class="chip" data-q="720p">720p</button>
+          <button class="chip" data-q="480p">480p</button>
+          <button class="chip" data-q="360p">360p</button>
+        </div>
+      </div>
+
+      <div class="options" id="audioOptions" hidden>
+        <label class="field-label">Audio format</label>
+        <div class="chips" id="aFormatChips">
+          <button class="chip active" data-af="mp3">MP3</button>
+          <button class="chip" data-af="m4a">M4A</button>
+          <button class="chip" data-af="opus">Opus</button>
+          <button class="chip" data-af="flac">FLAC</button>
+        </div>
+      </div>
+
+      <button id="downloadBtn" class="primary-btn">Download</button>
+    </section>
+
+    <section class="card progress-card" id="progressCard" hidden>
+      <div class="progress-head">
+        <span id="progressTitle" class="progress-title">Preparing…</span>
+        <button id="cancelBtn" class="ghost-btn danger">Cancel</button>
+      </div>
+      <div class="bar"><div id="barFill" class="bar-fill"></div></div>
+      <div class="progress-meta">
+        <span id="pctText">0%</span>
+        <span id="speedText"></span>
+        <span id="etaText"></span>
+      </div>
+      <div id="logLine" class="log-line"></div>
+      <a id="saveLink" class="primary-btn" hidden download>Save file</a>
+    </section>
+
+    <p class="legal">Only download content you have the right to. Respect each site's Terms of Service.</p>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
