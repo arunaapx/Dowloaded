@@ -8,11 +8,8 @@
 // Exposed as a factory so server.js can inject what it already has.
 
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const rateLimit = require('express-rate-limit');
 const { probe, resolveStreams, search, listExtractors } = require('../core/extractor');
-const jobs = require('../web/jobs');
 const usage = require('./usage');
 
 module.exports = function createExtractRouter(deps) {
@@ -93,60 +90,9 @@ module.exports = function createExtractRouter(deps) {
     res.json(out);
   });
 
-  // --- Full server-side download (the reliable engine: yt-dlp does everything,
-  //     then the finished file is streamed to the client). Works for YouTube
-  //     high-quality, HLS sites (pornhub etc.), merging — exactly like the
-  //     proven desktop buildArgs. ---
-
-  const VALID_Q = ['best', '4k', '1440p', '1080p', '720p', '480p', '360p'];
-
-  router.post('/download/create', limit, requireLicense, usageGuard, (req, res) => {
-    const b = req.body || {};
-    const url = String(b.url || '');
-    if (!/^https?:\/\//i.test(url)) return res.status(400).json({ ok: false, error: 'invalid url' });
-    const job = jobs.createJob({
-      url,
-      mode: b.mode === 'audio' ? 'audio' : 'video',
-      quality: VALID_Q.includes(b.quality) ? b.quality : '1080p',
-      audioBitrate: /^\d+$/.test(String(b.audioBitrate)) ? String(b.audioBitrate) : '192',
-      aFormat: ['mp3', 'm4a', 'opus', 'flac'].includes(b.aFormat) ? b.aFormat : 'mp3',
-      vContainer: ['mp4', 'mkv', 'webm'].includes(b.vContainer) ? b.vContainer : 'mp4',
-      vCodec: ['auto', 'h264', 'av1', 'vp9'].includes(b.vCodec) ? b.vCodec : 'auto',
-      vBitrate: Number(b.vBitrate) > 0 ? Number(b.vBitrate) : 0,
-      isPlaylist: false,
-      referer: typeof b.referer === 'string' ? b.referer : '',
-    });
-    if (job.full) return res.status(503).json({ ok: false, error: 'server is busy, please try again' });
-    if (req.license?.key) logEvent('download', req.license.key, getIp(req), `${job.id} ${b.mode || 'video'}/${b.quality || ''}`);
-    res.json({ ok: true, id: job.id });
-  });
-
-  router.get('/download/:id/events', requireLicense, (req, res) => {
-    const job = jobs.getJob(req.params.id);
-    if (!job) return res.status(404).end();
-    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-    res.write('retry: 3000\n\n');
-    const send = (ev, data) => { res.write(`event: ${ev}\n`); res.write(`data: ${JSON.stringify(data)}\n\n`); };
-    const onU = (s) => send('update', s);
-    const onL = (d) => send('log', d);
-    const onE = (s) => send('end', s);
-    job.bus.on('update', onU); job.bus.on('log', onL); job.bus.on('end', onE);
-    send('update', jobs.snapshot(job));
-    if (job.status === 'done' || job.status === 'error') send('end', jobs.snapshot(job));
-    const ping = setInterval(() => res.write(': keep-alive\n\n'), 15000);
-    req.on('close', () => { clearInterval(ping); job.bus.off('update', onU); job.bus.off('log', onL); job.bus.off('end', onE); });
-  });
-
-  router.get('/download/:id/file', requireLicense, (req, res) => {
-    const job = jobs.getJob(req.params.id);
-    if (!job) return res.status(404).json({ ok: false, error: 'not found' });
-    if (job.status !== 'done' || !job.file || !fs.existsSync(job.file)) return res.status(409).json({ ok: false, error: 'file not ready' });
-    res.download(job.file, path.basename(job.file));
-  });
-
-  router.post('/download/:id/cancel', requireLicense, (req, res) => {
-    res.json({ ok: jobs.cancelJob(req.params.id) });
-  });
+  // Downloads run on the DEVICE (via /resolve + the bundled clientDownloader),
+  // never on the server — so there are no server-side download routes here. The
+  // server only probes and resolves; no media file ever touches it.
 
   // Search + supported-sites list — also server-side so the client ships no yt-dlp.
   router.post('/search', limit, requireLicense, async (req, res) => {

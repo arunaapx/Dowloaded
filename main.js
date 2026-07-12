@@ -5,17 +5,17 @@ const os = require('os');
 const http = require('http');
 const crypto = require('crypto');
 const { checkBinaries: coreCheckBinaries } = require('./core/downloader');
+const { startClientDownload } = require('./core/clientDownloader');
 
 let mainWindow;
 const BRIDGE_PORT = 47813;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MINUTES = Math.max(1, parseInt(process.env.HEARTBEAT_INTERVAL_MINUTES || '5', 10));
 
-// Local server is the default so admin-created keys activate during development.
-// For a hosted license server, set LICENSE_SERVER_URL at launch or change this
-// fallback URL before shipping a packaged build.
+// Ships pointing at the hosted license + extraction server. For local dev,
+// override with the LICENSE_SERVER_URL env var (e.g. http://localhost:4000).
 const LICENSE_SERVER_URL =
-  (process.env.LICENSE_SERVER_URL || 'http://localhost:4000').replace(/\/+$/, '');
+  (process.env.LICENSE_SERVER_URL || 'https://downloader.prolanka.online').replace(/\/+$/, '');
 const LICENSE_BYPASS = process.env.LICENSE_BYPASS === '1';
 
 const HISTORY_PATH = () => path.join(app.getPath('userData'), 'history.json');
@@ -438,15 +438,13 @@ ipcMain.handle('fetch-info', async (_e, url) => {
   return { ok: true, title: m.title, uploader: m.uploader, duration: m.duration, thumbnail: m.thumbnail, isPlaylist: m.isPlaylist };
 });
 
-// renderer job id -> { jobId, payload, sender, sseReq, paused }
+// renderer job id -> { handle, payload, sender, paused }
 const clientJobs = new Map();
 
 function stopActiveDownloads(reason) {
-  const lic = readLicense();
   for (const [id, cj] of clientJobs.entries()) {
     clientJobs.delete(id);
-    try { cj.sseReq && cj.sseReq.abort(); } catch {}
-    postJsonAuth(`/api/download/${cj.jobId}/cancel`, {}, lic && lic.token);
+    try { cj.handle && cj.handle.cancel(); } catch {}
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('download-done', { id, ok: false, error: reason || 'License is not active.' });
     }
@@ -485,141 +483,93 @@ ipcMain.handle('client-extract', async (_e, url) => {
   return r.body || { ok: false, error: 'extract failed' };
 });
 
-function parseDispositionName(header) {
-  if (!header) return '';
-  const star = header.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
-  if (star) { try { return decodeURIComponent(star[1].replace(/"/g, '').trim()); } catch {} }
-  const plain = header.match(/filename="?([^"]+)"?/i);
-  return plain ? plain[1].trim() : '';
+// Resolve a chosen option into direct CDN stream URL(s) via the license-gated
+// server. The DEVICE then pulls those bytes itself — the server never downloads.
+function resolveStreamsFromServer(payload, token) {
+  return postJsonAuth('/api/resolve', {
+    url: payload.url,
+    mode: payload.mode,
+    quality: payload.quality,
+    aFormat: payload.aFormat,
+    vCodec: payload.vCodec,
+  }, token);
 }
 
-// Consume a Server-Sent Events stream over Electron's net. Returns the request
-// so it can be aborted.
-function openSse(urlPath, token, handlers) {
-  const req = net.request({ method: 'GET', url: LICENSE_SERVER_URL + urlPath });
-  if (token) req.setHeader('Authorization', `Bearer ${token}`);
-  req.on('response', (res) => {
-    let buf = '';
-    res.on('data', (c) => {
-      buf += c.toString();
-      let idx;
-      while ((idx = buf.indexOf('\n\n')) >= 0) {
-        const frame = buf.slice(0, idx); buf = buf.slice(idx + 2);
-        let ev = 'message', data = '';
-        frame.split(/\r?\n/).forEach((line) => {
-          if (line.startsWith('event:')) ev = line.slice(6).trim();
-          else if (line.startsWith('data:')) data += line.slice(5).trim();
-        });
-        if (data) { try { handlers.onEvent(ev, JSON.parse(data)); } catch {} }
-      }
-    });
-    res.on('end', () => handlers.onEnd && handlers.onEnd());
-  });
-  req.on('error', (e) => handlers.onError && handlers.onError(e));
-  req.end();
-  return req;
-}
-
-// Stream the finished file from the server to the user's chosen folder.
-function fetchFileToFolder(jobId, token, folder, fallbackName) {
-  return new Promise((resolve, reject) => {
-    const req = net.request({ method: 'GET', url: `${LICENSE_SERVER_URL}/api/download/${jobId}/file` });
-    if (token) req.setHeader('Authorization', `Bearer ${token}`);
-    req.on('response', (res) => {
-      if (res.statusCode !== 200) { res.on('data', () => {}); res.on('end', () => reject(new Error(`file transfer ${res.statusCode}`))); return; }
-      const name = parseDispositionName(res.headers['content-disposition']) || fallbackName || 'video';
-      const dest = path.join(folder, name);
-      const out = fs.createWriteStream(dest);
-      res.on('data', (c) => out.write(c));
-      res.on('end', () => out.end(() => resolve(dest)));
-      res.on('error', reject);
-      out.on('error', reject);
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-// Server runs the full yt-dlp download (reliable for YouTube/HLS/pornhub/merge),
-// streams progress here over SSE, then we pull the finished file to disk.
-async function startServerDownload(id, payload, sender) {
+// Device-side download: the server resolves stream URLs (license-gated), then the
+// bundled clientDownloader pulls the bytes with THIS device's bandwidth and saves
+// straight to the user's folder. No media file ever touches the server.
+async function startDeviceDownload(id, payload, sender) {
   const lic = readLicense();
   const token = lic && lic.token;
   const send = (channel, data) => { if (sender && !sender.isDestroyed()) sender.send(channel, { id, ...data }); };
 
-  const r = await postJsonAuth('/api/download/create', {
-    url: payload.url, mode: payload.mode, quality: payload.quality,
-    audioBitrate: payload.audioBitrate, aFormat: payload.aFormat,
-    vContainer: payload.vContainer, vCodec: payload.vCodec, vBitrate: payload.vBitrate,
-    referer: payload.referer,
-  }, token);
+  const r = await resolveStreamsFromServer(payload, token);
   if (r.status === 0) return { ok: false, error: `Cannot reach server at ${LICENSE_SERVER_URL}.` };
   if (r.status === 401 || r.status === 403 || r.status === 409) {
     notifyLicenseInvalidated({ reason: 'license-invalid', message: r.body?.error || 'License is not active.' });
     return { ok: false, error: r.body?.error || 'License is not active.' };
   }
-  if (!(r.status === 200 && r.body && r.body.ok)) return { ok: false, error: r.body?.error || `download failed (${r.status})` };
+  if (!(r.status === 200 && r.body && r.body.ok && Array.isArray(r.body.streams) && r.body.streams.length)) {
+    return { ok: false, error: r.body?.error || `could not resolve this video (${r.status})` };
+  }
 
-  const jobId = r.body.id;
-  const entry = { jobId, payload, sender, sseReq: null, paused: false };
-  clientJobs.set(id, entry);
+  const spec = {
+    mode: r.body.mode === 'audio' ? 'audio' : 'video',
+    streams: r.body.streams,
+    needsMerge: !!r.body.needsMerge,
+    headers: r.body.headers || {},
+    container: payload.mode === 'audio' ? (payload.aFormat || 'mp3') : (payload.vContainer || 'mp4'),
+    folder: payload.folder,
+    filenameBase: payload.title || 'video',
+    durationSec: Number(payload.durationSec) > 0 ? Number(payload.durationSec) : 0,
+  };
 
-  entry.sseReq = openSse(`/api/download/${jobId}/events`, token, {
-    onEvent: async (ev, d) => {
-      if (ev === 'update') send('download-progress', { percent: d.percent, size: d.size, speed: d.speed, eta: d.eta });
-      else if (ev === 'log') send('download-log', { message: d.message, error: d.error });
-      else if (ev === 'end') {
-        if (d.status === 'done') {
-          send('download-log', { message: 'Saving to your device…' });
-          try {
-            const dest = await fetchFileToFolder(jobId, token, payload.folder, payload.title);
-            send('download-done', { ok: true, file: dest, percent: 100 });
-          } catch (e) {
-            send('download-done', { ok: false, error: `file transfer failed: ${e.message}` });
-          }
-        } else {
-          send('download-done', { ok: false, error: d.error || 'download failed' });
-        }
-        clientJobs.delete(id);
-      }
-    },
+  const handle = startClientDownload(spec, { binDir: electronBinDir() });
+  clientJobs.set(id, { handle, payload, sender, paused: false });
+
+  handle.on('progress', (d) => send('download-progress', { percent: d.percent }));
+  handle.on('log', (d) => send('download-log', { message: d.message, error: d.error }));
+  handle.on('done', (d) => {
+    clientJobs.delete(id);
+    // Paused/cancelled downloads finish quietly (killSilently emits nothing; a
+    // user cancel is already reflected in the UI) — don't fire a stray done.
+    if (d.cancelled) return;
+    if (d.ok) send('download-done', { ok: true, file: d.file, percent: 100 });
+    else send('download-done', { ok: false, error: d.error || 'download failed' });
   });
+
   return { ok: true };
 }
 
 ipcMain.handle('client-download', async (event, payload) => {
   const license = await requireActiveLicenseForWork();
   if (!license.ok) return license;
-  return startServerDownload(payload.id, payload, event.sender);
+  return startDeviceDownload(payload.id, payload, event.sender);
 });
 
-// Pause: stop the server job + our stream; keep the config so resume can restart.
+// Pause: silently stop the device download; keep the config so resume can restart.
 ipcMain.handle('pause-download', async (_e, id) => {
   const cj = clientJobs.get(id);
   if (!cj) return false;
-  try { cj.sseReq && cj.sseReq.abort(); } catch {}
-  const lic = readLicense();
-  postJsonAuth(`/api/download/${cj.jobId}/cancel`, {}, lic && lic.token);
+  try { cj.handle && cj.handle.killSilently(); } catch {}
   cj.paused = true;
   return true;
 });
 
-// Resume: start a fresh server job for the same renderer id.
+// Resume: start a fresh device download for the same renderer id (no true resume).
 ipcMain.handle('resume-download', async (event, id) => {
   const license = await requireActiveLicenseForWork();
   if (!license.ok) return false;
   const cj = clientJobs.get(id);
   if (!cj) return false;
-  const r = await startServerDownload(id, cj.payload, event.sender);
+  const r = await startDeviceDownload(id, cj.payload, event.sender);
   return !!r.ok;
 });
 
 ipcMain.handle('cancel-download', async (_e, id) => {
   const cj = clientJobs.get(id);
   if (cj) {
-    try { cj.sseReq && cj.sseReq.abort(); } catch {}
-    const lic = readLicense();
-    postJsonAuth(`/api/download/${cj.jobId}/cancel`, {}, lic && lic.token);
+    try { cj.handle && cj.handle.cancel(); } catch {}
     clientJobs.delete(id);
   }
   return true;
