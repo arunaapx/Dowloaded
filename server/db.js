@@ -6,7 +6,7 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const DB_FILE = path.join(DATA_DIR, 'licenses.json');
 
-const state = { keys: {}, events: [] };
+const state = { keys: {}, events: [], devices: {} };
 
 function load() {
   try {
@@ -15,6 +15,7 @@ function load() {
     const obj = JSON.parse(raw);
     state.keys = obj.keys || {};
     state.events = obj.events || [];
+    state.devices = obj.devices || {};
     migrate();
   } catch (e) {
     console.error('[db] load failed:', e.message);
@@ -29,6 +30,8 @@ function migrate() {
     if (typeof k.block_reason === 'undefined') { k.block_reason = null; changed = true; }
     if (typeof k.expires_at === 'undefined') { k.expires_at = null; changed = true; }
     if (typeof k.note === 'undefined') { k.note = null; changed = true; }
+    // Existing keys default to paid (trial=0) so real licenses are never capped.
+    if (typeof k.trial === 'undefined') { k.trial = 0; changed = true; }
   }
   if (changed) scheduleSave();
 }
@@ -53,7 +56,7 @@ load();
 // API mirrors better-sqlite3 prepared-statement shape (.run / .get / .all)
 const stmts = {
   insertKey: {
-    run(key, email, created_at, note, expires_at) {
+    run(key, email, created_at, note, expires_at, trial) {
       state.keys[key] = {
         key,
         email: email || null,
@@ -68,6 +71,7 @@ const stmts = {
         last_heartbeat: null,
         expires_at: expires_at || null,
         note: note || null,
+        trial: trial ? 1 : 0,
       };
       scheduleSave();
       return { changes: 1 };
@@ -129,6 +133,18 @@ const stmts = {
     r.last_heartbeat = ts;
     scheduleSave();
     return { changes: 1 };
+  } },
+  // Device-locked trial ledger: tracks free downloads per device_id (permanent),
+  // so swapping the email can't reset the free quota.
+  getDevice: { get(deviceId) { return (deviceId && state.devices[deviceId]) || null; } },
+  bumpDeviceTrial: { run(deviceId) {
+    if (!deviceId) return { changes: 0 };
+    const d = state.devices[deviceId] || { trialDownloads: 0, firstSeen: Date.now(), updatedAt: 0 };
+    d.trialDownloads = (d.trialDownloads || 0) + 1;
+    d.updatedAt = Date.now();
+    state.devices[deviceId] = d;
+    scheduleSave();
+    return { changes: 1, trialDownloads: d.trialDownloads };
   } },
   logEvent: { run(at, type, key, ip, detail) {
     state.events.push({ id: state.events.length + 1, at, type, key, ip, detail });

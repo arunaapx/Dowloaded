@@ -183,7 +183,7 @@ async function licenseStatus() {
 }
 
 async function doSignup(email) {
-  const r = await postJson('/api/signup', { email });
+  const r = await postJson('/api/signup', { email, deviceId: deviceId() });
   if (r.status === 200 && r.body && r.body.ok) {
     return { ok: true, key: r.body.key, profile: r.body.profile || null, expiresAt: r.body.expiresAt || null };
   }

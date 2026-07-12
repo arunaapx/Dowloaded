@@ -15,6 +15,9 @@ const ADMIN_PASS = process.env.ADMIN_PASS || '';
 const TOKEN_TTL_HOURS = parseInt(process.env.TOKEN_TTL_HOURS || '24', 10);
 const DEFAULT_LICENSE_DAYS = parseInt(process.env.DEFAULT_LICENSE_DAYS || '30', 10);
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Free self-signup trial: N downloads per DEVICE (not per email), tracked
+// permanently so swapping the email can't reset the quota.
+const TRIAL_DOWNLOADS = Math.max(1, parseInt(process.env.VELOX_TRIAL_DOWNLOADS || '5', 10));
 
 // Persist JWT secret in data/ so tokens survive restart
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -94,6 +97,14 @@ function licenseState(row) {
   return row.device_id ? 'active' : 'pending';
 }
 
+// Free downloads left on a trial key's bound device (null for paid keys).
+function trialRemaining(row) {
+  if (!row || !row.trial) return null;
+  const dev = row.device_id ? stmts.getDevice.get(row.device_id) : null;
+  const used = dev ? (dev.trialDownloads || 0) : 0;
+  return Math.max(0, TRIAL_DOWNLOADS - used);
+}
+
 function publicProfile(row) {
   return {
     key: row.key,
@@ -103,14 +114,21 @@ function publicProfile(row) {
     expiresAt: row.expires_at || null,
     daysRemaining: daysRemaining(row.expires_at),
     status: licenseState(row),
+    trial: !!row.trial,
+    trialTotal: row.trial ? TRIAL_DOWNLOADS : null,
+    trialRemaining: trialRemaining(row),
   };
 }
 
 function publicAdminKey(row) {
+  const dev = row.trial && row.device_id ? stmts.getDevice.get(row.device_id) : null;
   return {
     ...row,
     status: licenseState(row),
     days_remaining: daysRemaining(row.expires_at),
+    trial: !!row.trial,
+    trial_used: dev ? (dev.trialDownloads || 0) : 0,
+    trial_total: row.trial ? TRIAL_DOWNLOADS : null,
   };
 }
 
@@ -192,6 +210,7 @@ const heartbeatLimit = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders
 
 app.post('/api/signup', signupLimit, (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
+  const deviceId = String(req.body?.deviceId || '').trim();
   if (!emailOk(email)) return res.status(400).json({ ok: false, error: 'invalid email' });
 
   const existing = stmts.findEmail.get(email);
@@ -213,11 +232,23 @@ app.post('/api/signup', signupLimit, (req, res) => {
     return res.json(ok({ key: existing.key, expiresAt: existing.expires_at || null, profile: publicProfile(existing), message: 'existing key returned' }));
   }
 
+  // Device-locked trial: once this device has spent its free downloads, no new
+  // trial key — swapping the email can't reset the quota.
+  const dev = deviceId ? stmts.getDevice.get(deviceId) : null;
+  if (dev && (dev.trialDownloads || 0) >= TRIAL_DOWNLOADS) {
+    logEvent('signup-trial-exhausted', null, getIp(req), `${email} / device ${deviceId.slice(0, 12)}`);
+    return res.status(403).json({
+      ok: false,
+      error: `Free trial finished (${TRIAL_DOWNLOADS} downloads) on this device. Please purchase a key.`,
+      trialExpired: true,
+    });
+  }
+
   const key = makeKey();
   const expiresAt = expiresAtFromDays(DEFAULT_LICENSE_DAYS);
-  stmts.insertKey.run(key, email, Date.now(), 'self-signup', expiresAt);
+  stmts.insertKey.run(key, email, Date.now(), 'self-signup-trial', expiresAt, 1); // trial=1
   const row = stmts.findKey.get(key);
-  logEvent('signup', key, getIp(req), email);
+  logEvent('signup-trial', key, getIp(req), email);
   res.json(ok({ key, expiresAt, profile: publicProfile(row) }));
 });
 
@@ -339,7 +370,7 @@ app.post('/admin/api/keys', requireAdmin, (req, res) => {
   if (days === null) return res.status(400).json({ ok: false, error: 'invalid license days' });
   const key = makeKey();
   const expiresAt = expiresAtFromDays(days);
-  stmts.insertKey.run(key, email || null, Date.now(), note, expiresAt);
+  stmts.insertKey.run(key, email || null, Date.now(), note, expiresAt, 0); // admin keys are paid (no trial cap)
   const row = stmts.findKey.get(key);
   logEvent('admin-create', key, getIp(req), `${email || 'no-email'} / ${days || 'lifetime'} days`);
   res.json(ok({ key, expiresAt, profile: publicProfile(row) }));

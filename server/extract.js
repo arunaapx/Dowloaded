@@ -29,6 +29,9 @@ module.exports = function createExtractRouter(deps) {
   // Per-IP burst guard. Per-license daily caps belong here too (Phase 3).
   const limit = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
 
+  // Free self-signup trial cap: downloads per DEVICE (matches server.js signup).
+  const TRIAL_DOWNLOADS = Math.max(1, parseInt(process.env.VELOX_TRIAL_DOWNLOADS || '5', 10));
+
   function requireLicense(req, res, next) {
     if (DEV_BYPASS) { req.license = { dev: true }; return next(); }
 
@@ -69,8 +72,34 @@ module.exports = function createExtractRouter(deps) {
     next();
   }
 
+  // Trial gate: for trial (self-signup) keys, cap free downloads per DEVICE.
+  // The count is keyed on the device id (permanent), so swapping the email can't
+  // reset it. Paid (admin) keys skip this entirely.
+  function trialStatus(req) {
+    const row = req.license?.key ? stmts.findKey.get(req.license.key) : null;
+    const isTrial = !!(row && row.trial);
+    const deviceId = req.license?.deviceId || row?.device_id || '';
+    const used = isTrial && deviceId ? (stmts.getDevice.get(deviceId)?.trialDownloads || 0) : 0;
+    return { isTrial, deviceId, used, exhausted: isTrial && used >= TRIAL_DOWNLOADS };
+  }
+
+  function trialGuard(req, res, next) {
+    if (DEV_BYPASS) return next();
+    req.trial = trialStatus(req);
+    if (req.trial.exhausted) {
+      logEvent('trial-exhausted', req.license?.key, getIp(req), `device ${String(req.trial.deviceId).slice(0, 12)}`);
+      return res.status(403).json({
+        ok: false,
+        error: `Free trial finished (${TRIAL_DOWNLOADS} downloads). Please purchase a key.`,
+        trialExpired: true,
+      });
+    }
+    next();
+  }
+
   // Step 1: probe a link -> metadata + the full menu of options for the client.
-  router.post('/extract', limit, requireLicense, usageGuard, async (req, res) => {
+  // Blocked early for exhausted trials so the user sees the message on paste.
+  router.post('/extract', limit, requireLicense, usageGuard, trialGuard, async (req, res) => {
     const info = await probe(req.body?.url, EXTRACT_OPTS);
     if (!info.ok) return res.status(422).json(info);
     if (req.license?.key) logEvent('extract', req.license.key, getIp(req), info.meta.extractor);
@@ -78,7 +107,8 @@ module.exports = function createExtractRouter(deps) {
   });
 
   // Step 2: resolve a chosen option -> direct CDN stream URL(s) the client fetches.
-  router.post('/resolve', limit, requireLicense, usageGuard, async (req, res) => {
+  // Each successful resolve = one download; it spends one trial credit on the device.
+  router.post('/resolve', limit, requireLicense, usageGuard, trialGuard, async (req, res) => {
     const out = await resolveStreams(req.body?.url, {
       mode: req.body?.mode,
       quality: req.body?.quality,
@@ -86,6 +116,7 @@ module.exports = function createExtractRouter(deps) {
       vCodec: req.body?.vCodec,
     }, EXTRACT_OPTS);
     if (!out.ok) return res.status(422).json(out);
+    if (req.trial?.isTrial && req.trial.deviceId) stmts.bumpDeviceTrial.run(req.trial.deviceId);
     if (req.license?.key) logEvent('resolve', req.license.key, getIp(req), `${out.mode}/${req.body?.quality || ''}`);
     res.json(out);
   });
