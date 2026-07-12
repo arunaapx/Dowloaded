@@ -7,6 +7,7 @@
 //
 // No license logic here — that's enforced by the route layer (server/extract.js).
 
+const fs = require('fs');
 const { spawn } = require('child_process');
 const { resolveBinary, defaultBinDir, normalizeHttpUrl } = require('./downloader');
 
@@ -27,6 +28,20 @@ function netArgs(opts) {
   const a = [];
   if (Number(opts.socketTimeout) > 0) a.push('--socket-timeout', String(opts.socketTimeout));
   if (opts.maxRetries != null) a.push('--retries', String(opts.maxRetries), '--fragment-retries', String(opts.maxRetries));
+  return a;
+}
+
+// Extra yt-dlp args to get past YouTube's datacenter/VPS bot-check. Both are
+// opt-in via env so nothing changes until the server operator sets them:
+//   VELOX_YTDLP_COOKIES     path to a cookies.txt exported from a logged-in browser
+//   VELOX_YT_PLAYER_CLIENTS comma list, e.g. "tv,web_safari,mweb,default"
+// --cookies is harmless for non-YouTube sites; --extractor-args is YouTube-scoped.
+function siteArgs() {
+  const a = [];
+  const cookies = process.env.VELOX_YTDLP_COOKIES;
+  if (cookies && fs.existsSync(cookies)) a.push('--cookies', cookies);
+  const clients = (process.env.VELOX_YT_PLAYER_CLIENTS || '').trim();
+  if (clients) a.push('--extractor-args', `youtube:player_client=${clients}`);
   return a;
 }
 
@@ -87,7 +102,7 @@ async function probe(url, opts = {}) {
   const u = normalizeHttpUrl(url);
   if (!u) return { ok: false, error: 'invalid or missing url' };
 
-  const args = ['-J', '--no-warnings', '--no-playlist', ...netArgs(opts), u];
+  const args = ['-J', '--no-warnings', '--no-playlist', ...netArgs(opts), ...siteArgs(), u];
   const r = await run(args, opts);
   if (!r.ok) return { ok: false, error: cleanErr(r.err) || 'could not read this link' };
 
@@ -123,7 +138,7 @@ async function resolveStreams(url, sel = {}, opts = {}) {
   const mode = sel.mode === 'audio' ? 'audio' : 'video';
   const selector = mode === 'audio' ? audioSelector() : videoSelector(sel.quality, sel.vCodec);
 
-  const args = ['-f', selector, '-g', '--no-warnings', '--no-playlist', ...netArgs(opts), u];
+  const args = ['-f', selector, '-g', '--no-warnings', '--no-playlist', ...netArgs(opts), ...siteArgs(), u];
   const r = await run(args, opts);
   if (!r.ok) return { ok: false, error: cleanErr(r.err) || 'could not resolve this video' };
 
@@ -146,7 +161,7 @@ async function search(query, limit, opts = {}) {
   const q = String(query || '').trim();
   if (!q) return { ok: false, error: 'empty query' };
   const n = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 25);
-  const args = ['-J', '--flat-playlist', '--no-warnings', ...netArgs(opts), `ytsearch${n}:${q}`];
+  const args = ['-J', '--flat-playlist', '--no-warnings', ...netArgs(opts), ...siteArgs(), `ytsearch${n}:${q}`];
   const r = await run(args, opts);
   if (!r.ok) return { ok: false, error: cleanErr(r.err) || 'search failed' };
   let j;
