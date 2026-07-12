@@ -97,6 +97,16 @@ module.exports = function createExtractRouter(deps) {
     next();
   }
 
+  // Device-side model: the client extracts + downloads with its own yt-dlp, and
+  // calls this ONCE before each download. It validates the license (blocked/
+  // revoked/expired via requireLicense) and spends one device-locked trial credit.
+  router.post('/authorize', limit, requireLicense, usageGuard, trialGuard, (req, res) => {
+    if (req.trial?.isTrial && req.trial.deviceId) stmts.bumpDeviceTrial.run(req.trial.deviceId);
+    if (req.license?.key) logEvent('authorize', req.license.key, getIp(req), req.trial?.isTrial ? 'trial' : 'paid');
+    const remaining = req.trial?.isTrial ? Math.max(0, TRIAL_DOWNLOADS - (req.trial.used + 1)) : null;
+    res.json({ ok: true, trial: !!req.trial?.isTrial, trialRemaining: remaining });
+  });
+
   // Step 1: probe a link -> metadata + the full menu of options for the client.
   // Blocked early for exhausted trials so the user sees the message on paste.
   router.post('/extract', limit, requireLicense, usageGuard, trialGuard, async (req, res) => {

@@ -4,8 +4,15 @@ const fs = require('fs');
 const os = require('os');
 const http = require('http');
 const crypto = require('crypto');
-const { checkBinaries: coreCheckBinaries } = require('./core/downloader');
-const { startClientDownload } = require('./core/clientDownloader');
+const { checkBinaries: coreCheckBinaries, startDownload } = require('./core/downloader');
+const { probe, search: ytSearch, listExtractors } = require('./core/extractor');
+
+// Network guards for the device's own yt-dlp (extraction + download).
+const YTDLP_OPTS = {
+  socketTimeout: parseInt(process.env.VELOX_SOCKET_TIMEOUT_SEC || '20', 10),
+  maxRetries: parseInt(process.env.VELOX_DL_RETRIES || '2', 10),
+  timeoutMs: parseInt(process.env.VELOX_EXTRACT_TIMEOUT_SEC || '60', 10) * 1000,
+};
 
 let mainWindow;
 const BRIDGE_PORT = 47813;
@@ -139,7 +146,7 @@ function postJson(urlPath, body) {
 }
 
 // Like postJson but attaches the license token — used for the gated
-// extraction endpoints (/api/extract, /api/resolve) in the thin-client model.
+// /api/authorize pre-download check.
 function postJsonAuth(urlPath, body, token) {
   return new Promise((resolve) => {
     try {
@@ -400,20 +407,14 @@ ipcMain.handle('open-external', async (_e, url) => {
   shell.openExternal(url);
 });
 
-// Thin client: search + supported-sites come from the license-gated server,
-// so this app ships no yt-dlp of its own.
+// Device-side: search + supported-sites run on THIS device's yt-dlp (residential
+// IP), so YouTube etc. work. The server only validates the license.
 ipcMain.handle('list-extractors', async () => {
-  const lic = readLicense();
-  const r = await postJsonAuth('/api/extractors', {}, lic && lic.token);
-  if (r.status === 0) return { ok: false, error: `Cannot reach server at ${LICENSE_SERVER_URL}.` };
-  return r.body || { ok: false, error: 'could not list sites' };
+  return listExtractors({ binDir: electronBinDir(), timeoutMs: 60000 });
 });
 
 ipcMain.handle('yt-search', async (_e, { query, limit }) => {
-  const lic = readLicense();
-  const r = await postJsonAuth('/api/search', { query, limit }, lic && lic.token);
-  if (r.status === 0) return { ok: false, error: `Cannot reach server at ${LICENSE_SERVER_URL}.` };
-  return r.body || { ok: false, error: 'search failed' };
+  return ytSearch(query, limit, { binDir: electronBinDir(), ...YTDLP_OPTS });
 });
 
 ipcMain.handle('read-clipboard', () => {
@@ -421,20 +422,17 @@ ipcMain.handle('read-clipboard', () => {
   return clipboard.readText();
 });
 
-// The client only needs ffmpeg/ffprobe (for merge/convert) — never yt-dlp.
+// Device does extraction + download itself, so it needs all three binaries.
 ipcMain.handle('check-binaries', () => {
   const info = coreCheckBinaries(electronBinDir());
-  info.clientReady = info.ffmpegExists && info.ffprobeExists; // yt-dlp not required here
+  info.clientReady = info.ytdlpExists && info.ffmpegExists && info.ffprobeExists;
   return info;
 });
 
 ipcMain.handle('fetch-info', async (_e, url) => {
-  const lic = readLicense();
-  const r = await postJsonAuth('/api/extract', { url }, lic && lic.token);
-  if (!(r.status === 200 && r.body && r.body.ok && r.body.meta)) {
-    return { ok: false, error: r.body?.error || 'could not read this link' };
-  }
-  const m = r.body.meta;
+  const info = await probe(String(url || ''), { binDir: electronBinDir(), ...YTDLP_OPTS });
+  if (!(info.ok && info.meta)) return { ok: false, error: info.error || 'could not read this link' };
+  const m = info.meta;
   return { ok: true, title: m.title, uploader: m.uploader, duration: m.duration, thumbnail: m.thumbnail, isPlaylist: m.isPlaylist };
 });
 
@@ -468,83 +466,54 @@ async function requireActiveLicenseForWork() {
   return { ok: false, error: r.message || 'License is not active.' };
 }
 
-// ---------- thin-client model: server extracts, device downloads ----------
+// ---------- device-side model: THIS device extracts + downloads with its own
+// yt-dlp (residential IP → YouTube works); the server only gates the license. ----
 
-// Probe a URL via the license-gated server endpoint → metadata + option menu.
+// Probe a URL locally → metadata + the option menu the renderer shows.
 ipcMain.handle('client-extract', async (_e, url) => {
-  if (LICENSE_BYPASS) return { ok: false, error: 'extraction requires a server connection' };
-  const lic = readLicense();
-  const r = await postJsonAuth('/api/extract', { url: String(url || '') }, lic && lic.token);
-  if (r.status === 0) return { ok: false, error: `Cannot reach server at ${LICENSE_SERVER_URL}.` };
-  if (r.status === 401 || r.status === 403 || r.status === 409) {
-    notifyLicenseInvalidated({ reason: 'license-invalid', message: r.body?.error || 'License is not active.' });
-    return { ok: false, error: r.body?.error || 'License is not active.' };
-  }
-  return r.body || { ok: false, error: 'extract failed' };
+  const info = await probe(String(url || ''), { binDir: electronBinDir(), ...YTDLP_OPTS });
+  return info.ok ? info : { ok: false, error: info.error || 'could not read this link' };
 });
 
-// Resolve a chosen option into direct CDN stream URL(s) via the license-gated
-// server. The DEVICE then pulls those bytes itself — the server never downloads.
-function resolveStreamsFromServer(payload, token) {
-  return postJsonAuth('/api/resolve', {
-    url: payload.url,
-    mode: payload.mode,
-    quality: payload.quality,
-    aFormat: payload.aFormat,
-    vCodec: payload.vCodec,
-  }, token);
-}
-
-// Device-side download: the server resolves stream URLs (license-gated), then the
-// bundled clientDownloader pulls the bytes with THIS device's bandwidth and saves
-// straight to the user's folder. No media file ever touches the server.
-async function startDeviceDownload(id, payload, sender) {
+// Get the server's go-ahead before a download: it validates the license
+// (blocked/revoked/expired) and spends one device-locked trial credit. A cracked
+// client that skips this loses block/revoke/trial enforcement — the documented
+// deterrent trade-off of shipping the extractor on the device.
+async function authorizeDownload() {
+  if (LICENSE_BYPASS) return { ok: true };
   const lic = readLicense();
-  const token = lic && lic.token;
-  const send = (channel, data) => { if (sender && !sender.isDestroyed()) sender.send(channel, { id, ...data }); };
-
-  const r = await resolveStreamsFromServer(payload, token);
-  if (r.status === 0) return { ok: false, error: `Cannot reach server at ${LICENSE_SERVER_URL}.` };
+  const r = await postJsonAuth('/api/authorize', {}, lic && lic.token);
+  if (r.status === 0) return { ok: false, error: `Cannot reach license server at ${LICENSE_SERVER_URL}.` };
   if (r.status === 401 || r.status === 403 || r.status === 409) {
-    notifyLicenseInvalidated({ reason: 'license-invalid', message: r.body?.error || 'License is not active.' });
+    notifyLicenseInvalidated({ reason: r.body?.trialExpired ? 'trial-expired' : 'license-invalid', message: r.body?.error || 'License is not active.' });
     return { ok: false, error: r.body?.error || 'License is not active.' };
   }
-  if (!(r.status === 200 && r.body && r.body.ok && Array.isArray(r.body.streams) && r.body.streams.length)) {
-    return { ok: false, error: r.body?.error || `could not resolve this video (${r.status})` };
-  }
+  if (!(r.status === 200 && r.body && r.body.ok)) return { ok: false, error: r.body?.error || 'not authorized' };
+  return { ok: true };
+}
 
-  const spec = {
-    mode: r.body.mode === 'audio' ? 'audio' : 'video',
-    streams: r.body.streams,
-    needsMerge: !!r.body.needsMerge,
-    headers: r.body.headers || {},
-    container: payload.mode === 'audio' ? (payload.aFormat || 'mp3') : (payload.vContainer || 'mp4'),
-    folder: payload.folder,
-    filenameBase: payload.title || 'video',
-    durationSec: Number(payload.durationSec) > 0 ? Number(payload.durationSec) : 0,
-  };
-
-  const handle = startClientDownload(spec, { binDir: electronBinDir() });
+// Full local yt-dlp download (YouTube/HLS/merge/convert) straight to the user's
+// folder. Progress/log/done are forwarded to the renderer over IPC.
+function startLocalDownload(id, payload, sender) {
+  const send = (channel, data) => { if (sender && !sender.isDestroyed()) sender.send(channel, { id, ...data }); };
+  const handle = startDownload({ ...YTDLP_OPTS, ...payload }, { binDir: electronBinDir() });
   clientJobs.set(id, { handle, payload, sender, paused: false });
 
-  handle.on('progress', (d) => send('download-progress', { percent: d.percent }));
+  handle.on('progress', (d) => send('download-progress', { percent: d.percent, size: d.size, speed: d.speed, eta: d.eta }));
   handle.on('log', (d) => send('download-log', { message: d.message, error: d.error }));
   handle.on('done', (d) => {
     clientJobs.delete(id);
-    // Paused/cancelled downloads finish quietly (killSilently emits nothing; a
-    // user cancel is already reflected in the UI) — don't fire a stray done.
-    if (d.cancelled) return;
+    if (d.cancelled) return; // paused/cancelled — UI already handled
     if (d.ok) send('download-done', { ok: true, file: d.file, percent: 100 });
     else send('download-done', { ok: false, error: d.error || 'download failed' });
   });
-
   return { ok: true };
 }
 
 ipcMain.handle('client-download', async (event, payload) => {
-  const license = await requireActiveLicenseForWork();
-  if (!license.ok) return license;
-  return startDeviceDownload(payload.id, payload, event.sender);
+  const auth = await authorizeDownload();
+  if (!auth.ok) return auth;
+  return startLocalDownload(payload.id, payload, event.sender);
 });
 
 // Pause: silently stop the device download; keep the config so resume can restart.
@@ -556,13 +525,14 @@ ipcMain.handle('pause-download', async (_e, id) => {
   return true;
 });
 
-// Resume: start a fresh device download for the same renderer id (no true resume).
+// Resume: restart the local download for the same renderer id (no true resume).
+// Only re-checks the license (heartbeat) — it does NOT spend another trial credit.
 ipcMain.handle('resume-download', async (event, id) => {
   const license = await requireActiveLicenseForWork();
   if (!license.ok) return false;
   const cj = clientJobs.get(id);
   if (!cj) return false;
-  const r = await startDeviceDownload(id, cj.payload, event.sender);
+  const r = startLocalDownload(id, cj.payload, event.sender);
   return !!r.ok;
 });
 

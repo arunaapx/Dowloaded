@@ -37,6 +37,10 @@
     ],
     "extraResources": [
       {
+        "from": "bin/yt-dlp.exe",
+        "to": "bin/yt-dlp.exe"
+      },
+      {
         "from": "bin/ffmpeg.exe",
         "to": "bin/ffmpeg.exe"
       },
