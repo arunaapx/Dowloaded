@@ -61,9 +61,7 @@ const els = {
   settingsFolderHint: $('settingsFolderHint'),
   settingsLicenseProfile: $('settingsLicenseProfile'),
   settingsLicenseExpiry: $('settingsLicenseExpiry'),
-  settingsYtdlp: $('settingsYtdlp'),
-  settingsFfmpeg: $('settingsFfmpeg'),
-  settingsFfprobe: $('settingsFfprobe'),
+  settingsEngine: $('settingsEngine'),
 };
 
 const SUPPORTED_SITES = [
@@ -93,17 +91,12 @@ const SUPPORTED_SITES = [
   // The thin client only needs ffmpeg/ffprobe (for merge + MP3). Extraction is
   // done server-side, so yt-dlp is no longer required on this device.
   const bin = await window.api.checkBinaries();
-  if (!bin.ffmpegExists) {
+  // Say what the user has lost and how to fix it, not which tool is missing.
+  if (!bin.ffmpegExists || !bin.ffprobeExists) {
     els.binWarning.classList.remove('hidden');
     els.binWarning.innerHTML = `
-      <strong>ffmpeg not found.</strong> Required for 1080p+ merge and MP3.
-      Place <code>ffmpeg.exe</code> in <code>${escapeHtml(bin.binDir)}</code>.
-    `;
-  } else if (!bin.ffprobeExists) {
-    els.binWarning.classList.remove('hidden');
-    els.binWarning.innerHTML = `
-      <strong>ffprobe not found.</strong> Required for reliable merge/remux/MP4 conversion.
-      Place <code>ffprobe.exe</code> in <code>${escapeHtml(bin.binDir)}</code>.
+      <strong>Some of Velox is missing.</strong> 1080p and above, and MP3 audio,
+      will not work until it is repaired. Reinstall Velox to fix this.
     `;
   }
 
@@ -154,12 +147,15 @@ function formatSpeed(kbps) {
 
 function refreshSettings() {
   if (els.settingsFolderHint) els.settingsFolderHint.textContent = state.folder || '';
-  if (els.settingsYtdlp) els.settingsYtdlp.textContent =
-    state.binInfo ? (state.binInfo.ytdlpExists ? state.binInfo.ytdlp : 'Not found — place yt-dlp.exe in ' + state.binInfo.binDir) : '';
-  if (els.settingsFfmpeg) els.settingsFfmpeg.textContent =
-    state.binInfo ? (state.binInfo.ffmpegExists ? state.binInfo.ffmpeg : 'Not found — place ffmpeg.exe in ' + state.binInfo.binDir) : '';
-  if (els.settingsFfprobe) els.settingsFfprobe.textContent =
-    state.binInfo ? (state.binInfo.ffprobeExists ? state.binInfo.ffprobe : 'Not found — place ffprobe.exe in ' + state.binInfo.binDir) : '';
+  // Report readiness, not filenames or paths.
+  if (els.settingsEngine) {
+    const b = state.binInfo;
+    els.settingsEngine.textContent = !b
+      ? ''
+      : (b.ytdlpExists && b.ffmpegExists && b.ffprobeExists)
+        ? 'Ready'
+        : 'Incomplete — reinstall Velox to repair it';
+  }
 }
 
 function bindEvents() {
@@ -559,6 +555,8 @@ function humanSize(bytes) {
 
 function handleLog({ id, message, error }) {
   if (!message) return;
+  message = cleanUserMessage(message);
+  if (!message) return;
   const stamp = new Date().toLocaleTimeString();
   els.log.textContent += `[${stamp}] ${message}\n`;
   els.log.scrollTop = els.log.scrollHeight;
@@ -604,7 +602,7 @@ function handleDone({ id, ok, error, code, file, percent }) {
   } else {
     job.state = 'error';
     card.classList.add('error');
-    const message = error || `yt-dlp exited ${code}`;
+    const message = cleanUserMessage(error) || `Download failed (code ${code})`;
     // A dropped connection is not a dead link: keep the job retryable and, if
     // the machine is simply offline, say so instead of calling it a failure.
     const offline = !navigator.onLine;
@@ -621,6 +619,18 @@ function handleDone({ id, ok, error, code, file, percent }) {
     if (retryBtn) retryBtn.hidden = false;
     handleLog({ id, message: `Download failed: ${message}`, error: true });
   }
+}
+
+// Errors and log lines arrive straight from the download engine and name the
+// tools and file paths behind it. Customers should never see the plumbing, so
+// strip it on the way to the screen. The meaning of the message is kept.
+function cleanUserMessage(msg) {
+  return String(msg || '')
+    .replace(/^ERROR:\s*/i, '')
+    .replace(/\byt[-_]?dlp(\.exe)?\b/gi, 'the download engine')
+    .replace(/\bff(mpeg|probe)(\.exe)?\b/gi, 'the media converter')
+    .replace(/\[(youtube|download|merger|extractaudio|videoremuxer|videoconvertor)[^\]]*\]\s*/gi, '')
+    .trim();
 }
 
 // Tell "the network went away" apart from "this link is broken". An HTTP status
@@ -899,7 +909,7 @@ async function loadSupportedSites() {
   const body = $('sitesListBody');
   const count = $('sitesCount');
   if (extractorsCache) { renderSitesList(); return; }
-  if (body) body.innerHTML = '<div class="modal-loading">Loading from yt-dlp…</div>';
+  if (body) body.innerHTML = '<div class="modal-loading">Loading supported sites…</div>';
   if (count) count.textContent = '';
   const res = await window.api.listExtractors();
   if (!res.ok) {
@@ -941,7 +951,7 @@ async function runLicenseGate() {
 
   const status = await window.api.licenseStatus();
   if (status.licensed) {
-    lock.classList.add('hidden');
+    hideLockScreen();
     renderLicenseProfile(status.profile || status);
   } else {
     renderLicenseProfile(null);
@@ -966,18 +976,52 @@ async function runLicenseGate() {
   }
 }
 
+// The browser tab's <webview> runs in its own process and keeps keyboard focus
+// there. While the lock screen is up its inputs would look focusable but stay
+// dead, because every keystroke still went to the embedded page. Taking the
+// webview out of the layout releases that focus; hideLockScreen puts it back.
+function setBrowserViewActive(active) {
+  const bv = document.getElementById('bv');
+  if (!bv) return;
+  bv.style.visibility = active ? '' : 'hidden';
+  if (!active && typeof bv.blur === 'function') { try { bv.blur(); } catch {} }
+}
+
+function hideLockScreen() {
+  const lock = document.getElementById('lockScreen');
+  if (lock) lock.classList.add('hidden');
+  setBrowserViewActive(true);
+}
+
+// Guard so repeated sign-out/sign-in cycles don't stack a fresh set of tab
+// listeners on every call.
+let lockTabsWired = false;
+
 function showLockScreen() {
   return new Promise((resolve) => {
     const lock = document.getElementById('lockScreen');
     lock.classList.remove('hidden');
+    setBrowserViewActive(false);
 
     const tabs = lock.querySelectorAll('[data-lk-mode]');
     const panes = lock.querySelectorAll('[data-lk-pane]');
-    tabs.forEach((t) => t.addEventListener('click', () => {
-      const m = t.dataset.lkMode;
-      tabs.forEach((x) => x.classList.toggle('active', x === t));
-      panes.forEach((p) => p.classList.toggle('hidden', p.dataset.lkPane !== m));
-    }, { once: false }));
+    if (!lockTabsWired) {
+      lockTabsWired = true;
+      tabs.forEach((t) => t.addEventListener('click', () => {
+        const m = t.dataset.lkMode;
+        tabs.forEach((x) => x.classList.toggle('active', x === t));
+        panes.forEach((p) => p.classList.toggle('hidden', p.dataset.lkPane !== m));
+        // Put the caret in whichever field the chosen tab shows.
+        const field = lock.querySelector(`[data-lk-pane="${m}"] input`);
+        if (field) setTimeout(() => field.focus(), 0);
+      }, { once: false }));
+    }
+
+    // Nothing focused the input before, so the caret never left the webview.
+    setTimeout(() => {
+      const visible = lock.querySelector('[data-lk-pane]:not(.hidden) input');
+      if (visible) visible.focus();
+    }, 60);
 
     const emailInput = document.getElementById('lkEmail');
     const emailBtn   = document.getElementById('lkEmailBtn');
@@ -1011,7 +1055,7 @@ function showLockScreen() {
         renderLicenseProfile(a.profile || null);
         setMsg(emailMsg, 'Activated. Welcome!', 'success');
         setTimeout(() => {
-          document.getElementById('lockScreen').classList.add('hidden');
+          hideLockScreen();
           resolve();
         }, 600);
       } else {
@@ -1030,7 +1074,7 @@ function showLockScreen() {
         renderLicenseProfile(a.profile || null);
         setMsg(keyMsg, 'Activated. Welcome!', 'success');
         setTimeout(() => {
-          document.getElementById('lockScreen').classList.add('hidden');
+          hideLockScreen();
           resolve();
         }, 600);
       } else {
