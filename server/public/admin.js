@@ -131,21 +131,34 @@ function renderKeys() {
       <td class="actions">
         <button class="btn small ghost" data-act="copy">Copy</button>
         <button class="btn small ghost" data-act="edit">Edit</button>
-        <button class="btn small ghost" data-act="extend">+30d</button>
-        ${k.device_id ? '<button class="btn small ghost" data-act="reset">Reset device</button>' : ''}
-        ${k.trial ? '<button class="btn small ghost" data-act="make-paid" title="Lift the free-download cap for good">Make paid</button>' : ''}
-        ${k.blocked
-          ? '<button class="btn small ghost" data-act="unblock">Unblock</button>'
-          : '<button class="btn small danger" data-act="block">Block</button>'}
-        ${k.revoked
-          ? '<button class="btn small ghost" data-act="unrevoke">Unrevoke</button>'
-          : '<button class="btn small danger" data-act="revoke">Revoke</button>'}
-        <button class="btn small danger" data-act="delete">Delete</button>
+        <button class="btn small ghost more-toggle" title="More actions">···</button>
+        <span class="more-actions" hidden>
+          <button class="btn small ghost" data-act="extend">+30d</button>
+          ${k.device_id ? '<button class="btn small ghost" data-act="reset">Reset device</button>' : ''}
+          ${k.trial ? '<button class="btn small ghost" data-act="make-paid" title="Lift the free-download cap for good">Make paid</button>' : ''}
+          ${k.blocked
+            ? '<button class="btn small ghost" data-act="unblock">Unblock</button>'
+            : '<button class="btn small danger" data-act="block">Block</button>'}
+          ${k.revoked
+            ? '<button class="btn small ghost" data-act="unrevoke">Unrevoke</button>'
+            : '<button class="btn small danger" data-act="revoke">Revoke</button>'}
+          <button class="btn small danger" data-act="delete">Delete</button>
+        </span>
       </td>
     `;
     tr.querySelectorAll('button[data-act]').forEach((b) => {
       b.addEventListener('click', () => handleAction(b.dataset.act, k));
     });
+    // The rare and destructive actions stay folded away, so the table fits on
+    // screen instead of forcing a horizontal scroll past eight buttons.
+    const moreBtn = tr.querySelector('.more-toggle');
+    if (moreBtn) {
+      moreBtn.addEventListener('click', () => {
+        const box = tr.querySelector('.more-actions');
+        box.hidden = !box.hidden;
+        moreBtn.classList.toggle('open', !box.hidden);
+      });
+    }
     tbody.appendChild(tr);
   }
 }
@@ -349,7 +362,11 @@ function fmtDate(ms) {
   if (diff < 60) return 'just now';
   if (diff < 3600) return Math.floor(diff / 60) + ' min ago';
   if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-  return d.toLocaleString();
+  // Two short lines instead of one long "7/12/2026, 4:56:52 PM" - the same
+  // information in roughly half the column width.
+  const day = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return `${day}<br><small class="muted">${time}</small>`;
 }
 function toDateInput(ms) {
   const d = new Date(ms);

@@ -341,3 +341,34 @@ td.actions .btn { margin-left: 4px; }
 .setting .hint { word-break: normal; overflow-wrap: anywhere; }
 /* Line the Save button up with the inputs beside it, not the labels. */
 .setting-actions { justify-content: flex-start; padding-top: 22px; }
+
+/* ---- keys table: keep it readable without a horizontal scroll ---- */
+
+/* The Key column stays put while the rest scrolls, so you never lose track of
+   which licence a row belongs to. */
+#keysTable th:first-child,
+#keysTable td:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--bg-card);
+  z-index: 2;
+}
+#keysTable thead th:first-child { z-index: 3; }
+/* A hairline edge so the sticky column reads as pinned, not overlapping. */
+#keysTable th:first-child::after,
+#keysTable td:first-child::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+
+/* Rare and destructive actions fold away behind the ··· button. */
+.actions { white-space: nowrap; }
+.more-actions { display: inline-flex; gap: 6px; align-items: center; }
+.more-actions[hidden] { display: none; }
+.more-toggle { font-weight: 700; letter-spacing: 1px; padding-left: 10px; padding-right: 10px; }
+.more-toggle.open { color: var(--accent); border-color: var(--accent); }
+
+small.muted { color: var(--text-faint); }
