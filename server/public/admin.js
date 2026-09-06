@@ -35,9 +35,11 @@ function renderSettings(s) {
   $('setSignup').value = s.signupEnabled ? '1' : '0';
   $('setTrial').value = s.trialDownloads;
   $('setDays').value = s.defaultLicenseDays;
+  $('setRate').value = s.signupPerHour;
   const badge = $('signupState');
+  const rate = s.signupPerHour > 0 ? `${s.signupPerHour}/hour per IP` : 'no rate limit';
   badge.textContent = s.signupEnabled
-    ? `Open — ${s.trialDownloads} free downloads per device`
+    ? `Open — ${s.trialDownloads} free downloads per device · ${rate}`
     : 'Closed — purchase only';
   badge.className = s.signupEnabled ? 'hint ok' : 'hint warn';
 }
@@ -282,6 +284,7 @@ $('settingsSave').addEventListener('click', async () => {
         signupEnabled: $('setSignup').value === '1',
         trialDownloads: Number($('setTrial').value),
         defaultLicenseDays: Number($('setDays').value),
+        signupPerHour: Number($('setRate').value),
       },
     });
     // api() resolves with the body on failure rather than throwing, so the

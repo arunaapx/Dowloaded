@@ -18,6 +18,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // Free self-signup trial: N downloads per DEVICE (not per email), tracked
 // permanently so swapping the email can't reset the quota.
 const TRIAL_DOWNLOADS = Math.max(1, parseInt(process.env.VELOX_TRIAL_DOWNLOADS || '5', 10));
+// Default sign-ups per hour per IP. Generous on purpose; see settings().
+const SIGNUP_PER_HOUR = Math.max(0, parseInt(process.env.VELOX_SIGNUP_PER_HOUR || '60', 10));
 
 // Persist JWT secret in data/ so tokens survive restart
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -117,10 +119,16 @@ function settings() {
   const s = stmts.getSettings.get() || {};
   const trial = Number(s.trialDownloads);
   const days = Number(s.defaultLicenseDays);
+  // Sign-ups per hour from one IP. Mobile carriers put hundreds of real
+  // customers behind a single address (CGNAT), so a tight cap here blocks
+  // innocent people, not abusers - the one-email-per-device hardware lock is
+  // what actually limits how many keys anyone can obtain. 0 turns it off.
+  const perHour = Number(s.signupPerHour);
   return {
     signupEnabled: s.signupEnabled === undefined ? true : !!s.signupEnabled,
     trialDownloads: Number.isFinite(trial) && trial >= 1 ? Math.floor(trial) : TRIAL_DOWNLOADS,
     defaultLicenseDays: Number.isFinite(days) && days >= 0 ? Math.floor(days) : DEFAULT_LICENSE_DAYS,
+    signupPerHour: Number.isFinite(perHour) && perHour >= 0 ? Math.floor(perHour) : SIGNUP_PER_HOUR,
   };
 }
 
@@ -254,8 +262,24 @@ function limited(windowMs, max, message) {
   });
 }
 
-const signupLimit = limited(60 * 60 * 1000, 5,
-  'Too many sign-up attempts from this network. Please wait an hour, or paste a key you already have.');
+// Read the cap on every request so changing it in the admin panel applies at
+// once, and skip the limiter entirely when it is set to 0.
+const signupLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: () => settings().signupPerHour,
+  skip: () => settings().signupPerHour <= 0,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    logEvent('rate-limited', null, getIp(req), '/api/signup');
+    res.status(429).json({
+      ok: false,
+      error: 'Too many sign-up attempts from this network. Please wait a while, or paste a key you already have.',
+      rateLimited: true,
+      retryAfterMinutes: 60,
+    });
+  },
+});
 const activateLimit = limited(60 * 1000, 10,
   'Too many activation attempts. Please wait a minute and try again.');
 const heartbeatLimit = limited(60 * 1000, 30,
@@ -555,6 +579,13 @@ app.post('/admin/api/settings', requireAdmin, (req, res) => {
       return res.status(400).json({ ok: false, error: 'default days must be between 0 and 36500' });
     }
     patch.defaultLicenseDays = Math.floor(n);
+  }
+  if (req.body?.signupPerHour !== undefined) {
+    const n = Number(req.body.signupPerHour);
+    if (!Number.isFinite(n) || n < 0 || n > 100000) {
+      return res.status(400).json({ ok: false, error: 'sign-ups per hour must be between 0 and 100000 (0 = no limit)' });
+    }
+    patch.signupPerHour = Math.floor(n);
   }
 
   stmts.saveSettings.run(patch);

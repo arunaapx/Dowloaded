@@ -55,6 +55,15 @@
           <input type="number" id="setDays" min="0" max="36500" />
           <span class="hint">How long a new trial key lasts. 0 = never expires.</span>
         </label>
+        <label class="setting">
+          <span class="setting-label">Sign-ups per hour, per IP</span>
+          <input type="number" id="setRate" min="0" max="100000" />
+          <span class="hint">
+            <b>0 = no limit.</b> Mobile networks put many real customers behind one
+            address, so a low number blocks innocent people. The one-email-per-device
+            lock is the real protection.
+          </span>
+        </label>
         <div class="setting setting-actions">
           <button class="btn primary" id="settingsSave">Save settings</button>
           <span id="settingsResult" class="hint"></span>
