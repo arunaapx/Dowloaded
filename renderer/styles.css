@@ -746,6 +746,8 @@ input[type="text"]:focus, input[type="url"]:focus {
 .ctrl-btn:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
 .ctrl-btn.danger:hover { color: var(--danger); }
 .ctrl-btn svg { width: 13px; height: 13px; }
+/* display:inline-flex above would otherwise beat the hidden attribute. */
+.ctrl-btn[hidden] { display: none; }
 
 .subsection-title {
   font-size: 12px;

@@ -6,7 +6,10 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const DB_FILE = path.join(DATA_DIR, 'licenses.json');
 
-const state = { keys: {}, events: [], devices: {} };
+// `settings` holds the knobs the admin panel can change at runtime. Anything
+// absent here falls back to the env var, so an untouched install behaves
+// exactly as it did before the panel gained a settings card.
+const state = { keys: {}, events: [], devices: {}, settings: {} };
 
 function load() {
   try {
@@ -16,6 +19,7 @@ function load() {
     state.keys = obj.keys || {};
     state.events = obj.events || [];
     state.devices = obj.devices || {};
+    state.settings = obj.settings || {};
     migrate();
   } catch (e) {
     console.error('[db] load failed:', e.message);
@@ -137,6 +141,85 @@ const stmts = {
   // Device-locked trial ledger: tracks free downloads per device_id (permanent),
   // so swapping the email can't reset the free quota.
   getDevice: { get(deviceId) { return (deviceId && state.devices[deviceId]) || null; } },
+  // --- hardware binding: one email <-> one device -------------------------
+  // Written at registration and never by the user again. Only an admin
+  // reset-device clears it, which is what makes "you cannot move yourself to a
+  // new machine" true rather than merely inconvenient.
+  bindDeviceEmail: { run(deviceId, email, key) {
+    if (!deviceId) return { changes: 0 };
+    const d = state.devices[deviceId] || { trialDownloads: 0, firstSeen: Date.now(), updatedAt: 0 };
+    d.email = String(email || '').toLowerCase();
+    d.key = key || null;
+    d.boundAt = d.boundAt || Date.now();
+    d.updatedAt = Date.now();
+    state.devices[deviceId] = d;
+    scheduleSave();
+    return { changes: 1 };
+  } },
+  // Clears the email/key binding but deliberately KEEPS trialDownloads, so an
+  // admin moving someone to a new machine never hands out a fresh free trial.
+  clearDeviceBinding: { run(deviceId) {
+    const d = deviceId && state.devices[deviceId];
+    if (!d) return { changes: 0 };
+    delete d.email; delete d.key; delete d.boundAt;
+    d.updatedAt = Date.now();
+    scheduleSave();
+    return { changes: 1 };
+  } },
+  findDeviceByEmail: { get(email) {
+    const wanted = String(email || '').trim().toLowerCase();
+    if (!wanted) return null;
+    for (const [id, d] of Object.entries(state.devices)) {
+      if (d.email && d.email === wanted) return { deviceId: id, ...d };
+    }
+    return null;
+  } },
+  // --- runtime settings, editable from the admin panel --------------------
+  getSettings: { get() { return { ...state.settings }; } },
+  saveSettings: { run(patch) {
+    Object.assign(state.settings, patch);
+    scheduleSave();
+    return { changes: 1 };
+  } },
+
+  // --- device ledger admin ------------------------------------------------
+  allDevices: { all() {
+    return Object.entries(state.devices)
+      .map(([id, d]) => ({ deviceId: id, ...d }))
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  } },
+  // Hands a machine a fresh free trial. Separate from clearDeviceBinding on
+  // purpose: unbinding an account and granting new downloads are different
+  // decisions and should not happen by accident.
+  resetDeviceTrial: { run(deviceId) {
+    const d = deviceId && state.devices[deviceId];
+    if (!d) return { changes: 0 };
+    d.trialDownloads = 0;
+    d.updatedAt = Date.now();
+    scheduleSave();
+    return { changes: 1 };
+  } },
+  deleteDevice: { run(deviceId) {
+    if (!deviceId || !state.devices[deviceId]) return { changes: 0 };
+    delete state.devices[deviceId];
+    scheduleSave();
+    return { changes: 1 };
+  } },
+  // Lift the trial cap on a key (someone paid outside the PayPal flow).
+  setKeyPaid: { run(key) {
+    const r = state.keys[key];
+    if (!r) return { changes: 0 };
+    r.trial = 0;
+    scheduleSave();
+    return { changes: 1 };
+  } },
+
+  // Every device a key has been bound to - used by admin reset to unbind them.
+  devicesForKey: { all(key) {
+    return Object.entries(state.devices)
+      .filter(([, d]) => d.key === key)
+      .map(([id, d]) => ({ deviceId: id, ...d }));
+  } },
   bumpDeviceTrial: { run(deviceId) {
     if (!deviceId) return { changes: 0 };
     const d = state.devices[deviceId] || { trialDownloads: 0, firstSeen: Date.now(), updatedAt: 0 };

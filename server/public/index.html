@@ -33,6 +33,37 @@
 
     <section class="card">
       <div class="card-header">
+        <h2>Free trial</h2>
+        <span id="signupState" class="hint"></span>
+      </div>
+      <div class="settings-grid">
+        <label class="setting">
+          <span class="setting-label">Self-signup trial</span>
+          <select id="setSignup">
+            <option value="1">On — anyone can get a free trial key</option>
+            <option value="0">Off — purchase only</option>
+          </select>
+          <span class="hint">Turning this off stops NEW trial keys. Keys already issued keep working.</span>
+        </label>
+        <label class="setting">
+          <span class="setting-label">Free downloads per device</span>
+          <input type="number" id="setTrial" min="1" max="10000" />
+          <span class="hint">Counted per machine, so a new email cannot reset it.</span>
+        </label>
+        <label class="setting">
+          <span class="setting-label">Trial length (days)</span>
+          <input type="number" id="setDays" min="0" max="36500" />
+          <span class="hint">How long a new trial key lasts. 0 = never expires.</span>
+        </label>
+        <div class="setting setting-actions">
+          <button class="btn primary" id="settingsSave">Save settings</button>
+          <span id="settingsResult" class="hint"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
         <h2>Keys</h2>
         <input type="text" id="filterInput" placeholder="Filter by email, key, device…" class="filter" />
       </div>
@@ -44,6 +75,7 @@
               <th>Email</th>
               <th>Expiry</th>
               <th>Device</th>
+              <th>Trial</th>
               <th>Created</th>
               <th>Heartbeat</th>
               <th>Status</th>
@@ -51,6 +83,21 @@
             </tr>
           </thead>
           <tbody id="keysBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h2>Devices</h2>
+        <span class="hint">One email per machine. Unbind frees the machine; reset trial grants its free downloads again.</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Device</th><th>Email</th><th>Key</th><th>Trial used</th><th>Bound</th><th class="actions">Actions</th></tr>
+          </thead>
+          <tbody id="devicesBody"></tbody>
         </table>
       </div>
     </section>

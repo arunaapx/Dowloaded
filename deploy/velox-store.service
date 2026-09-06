@@ -1,0 +1,36 @@
+# systemd unit for the Rust store API.
+#
+#   sudo cp deploy/velox-store.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now velox-store
+#   sudo systemctl status velox-store
+#   journalctl -u velox-store -f          # logs, including every issued key
+#
+# The licence server stays on PM2 (deploy/ecosystem.config.js); this one is a
+# compiled binary with no runtime, so systemd is the simpler fit.
+
+[Unit]
+Description=Velox store API (PayPal checkout + licence issuing)
+After=network.target
+# The store calls the licence server over loopback, so start it after.
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/velox/store
+EnvironmentFile=/opt/velox/store/.env
+ExecStart=/opt/velox/store/target/release/velox-store
+Restart=on-failure
+RestartSec=3
+User=www-data
+Group=www-data
+
+# The service only needs to read its binary and write its own data dir.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/velox/store/data
+
+[Install]
+WantedBy=multi-user.target

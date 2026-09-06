@@ -86,7 +86,7 @@ function buildArgs(payload, binDir = defaultBinDir()) {
   const {
     url, folder, quality, mode, audioBitrate, isPlaylist,
     vContainer, vCodec, vBitrate, aFormat, referer, sourcePage,
-    outputTemplate, socketTimeout, maxRetries,
+    outputTemplate, socketTimeout, maxRetries, retrySleep,
   } = payload;
   const args = [];
   const ffmpegLocation = ffmpegLocationArg(binDir);
@@ -201,6 +201,11 @@ function buildArgs(payload, binDir = defaultBinDir()) {
   if (Number(socketTimeout) > 0) args.push('--socket-timeout', String(socketTimeout));
   if (maxRetries != null && Number.isFinite(Number(maxRetries))) {
     args.push('--retries', String(maxRetries), '--fragment-retries', String(maxRetries));
+  }
+  // Wait between retries instead of burning them all in a fraction of a second.
+  // Without this, a Wi-Fi blip exhausts every retry before the link is back.
+  if (Number(retrySleep) > 0) {
+    args.push('--retry-sleep', String(retrySleep), '--retry-sleep', `fragment:${retrySleep}`);
   }
   if (ffmpegLocation) args.push('--ffmpeg-location', ffmpegLocation);
   const refererUrl = normalizeHttpUrl(referer || sourcePage);

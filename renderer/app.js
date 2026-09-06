@@ -433,19 +433,25 @@ async function queueDownload(url, extra = {}) {
   renderJob(job);
   updateStatus();
 
-  // Thin-client model: the server extracts (license-gated) and returns metadata
-  // + the duration we need for progress; the bytes are then pulled by THIS device.
-  const info = await window.api.clientExtract(url);
-  if (info && info.ok && info.meta) {
-    if (info.meta.title) job.title = info.meta.title;
-    if (info.meta.thumbnail) job.thumbnail = info.meta.thumbnail;
-    job.durationSec = info.meta.duration || 0;
-    updateJobCard(job);
-  } else if (info && info.error) {
-    handleLog({ id, message: info.error, error: true });
-  }
+  // Start downloading straight away. The metadata probe below costs ~6s on
+  // YouTube and only supplies the card's title and thumbnail, so it must run
+  // ALONGSIDE the download, never in front of it — waiting for it used to
+  // double the time between clicking Download and the first byte landing.
+  const downloading = window.api.clientDownload(job);
 
-  const startResult = await window.api.clientDownload(job);
+  window.api.clientExtract(url).then((info) => {
+    if (!state.jobs.has(id)) return;            // cancelled while probing
+    if (info && info.ok && info.meta) {
+      if (info.meta.title) job.title = info.meta.title;
+      if (info.meta.thumbnail) job.thumbnail = info.meta.thumbnail;
+      job.durationSec = info.meta.duration || 0;
+      updateJobCard(job);
+    }
+    // A probe failure is not reported: the download is the source of truth and
+    // raises its own error if the link is genuinely bad.
+  }).catch(() => {});
+
+  const startResult = await downloading;
   if (!startResult?.ok) {
     handleDone({ id, ok: false, error: startResult?.error || 'License is not active.' });
   }
@@ -481,6 +487,10 @@ function renderJob(job) {
         <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
         <span class="pause-label">Pause</span>
       </button>
+      <button class="ctrl-btn retry-btn" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><polyline points="20 4 20 10 14 10"/></svg>
+        Retry
+      </button>
       <button class="ctrl-btn danger cancel-btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
         Cancel
@@ -494,6 +504,7 @@ function renderJob(job) {
   els.activeGrid.prepend(div);
 
   div.querySelector('.pause-btn').addEventListener('click', () => togglePause(job.id));
+  div.querySelector('.retry-btn').addEventListener('click', () => retryJob(job.id));
   div.querySelector('.cancel-btn').addEventListener('click', () => cancelJob(job.id));
   div.querySelector('.open-btn').addEventListener('click', () => window.api.openFolder(job.folder));
 }
@@ -594,13 +605,68 @@ function handleDone({ id, ok, error, code, file, percent }) {
     job.state = 'error';
     card.classList.add('error');
     const message = error || `yt-dlp exited ${code}`;
+    // A dropped connection is not a dead link: keep the job retryable and, if
+    // the machine is simply offline, say so instead of calling it a failure.
+    const offline = !navigator.onLine;
+    job.netError = offline || isNetworkError(message);
     const st = card.querySelector('.job-state');
-    st.textContent = 'Failed';
-    st.className = 'job-state error';
-    card.querySelector('.speed').textContent = message;
+    st.textContent = job.netError ? (offline ? 'Waiting for internet…' : 'Connection lost') : 'Failed';
+    st.className = job.netError ? 'job-state paused' : 'job-state error';
+    card.querySelector('.speed').textContent = job.netError
+      ? 'Will continue automatically when you are back online.'
+      : message;
+    const pauseBtn = card.querySelector('.pause-btn');
+    const retryBtn = card.querySelector('.retry-btn');
+    if (pauseBtn) pauseBtn.hidden = true;
+    if (retryBtn) retryBtn.hidden = false;
     handleLog({ id, message: `Download failed: ${message}`, error: true });
   }
 }
+
+// Tell "the network went away" apart from "this link is broken". An HTTP status
+// means the server answered, so that is the link's problem, not the Wi-Fi's.
+function isNetworkError(msg) {
+  const m = String(msg || '');
+  if (/HTTP Error \d{3}/i.test(m)) return false;
+  return /connection|timed? ?out|timeout|network|getaddrinfo|name resolution|reset by peer|remote end closed|unreachable|refused|10054|10060|11001/i.test(m);
+}
+
+// Restart a failed job. yt-dlp resumes from the .part file already on disk, so
+// this continues rather than starting the download over.
+async function retryJob(id) {
+  const job = state.jobs.get(id);
+  if (!job) return;
+  const card = document.getElementById(id);
+  if (!card) return;
+  card.classList.remove('error');
+  const st = card.querySelector('.job-state');
+  st.textContent = 'Reconnecting…';
+  st.className = 'job-state';
+  card.querySelector('.speed').textContent = '';
+  card.querySelector('.retry-btn').hidden = true;
+  const pauseBtn = card.querySelector('.pause-btn');
+  if (pauseBtn) pauseBtn.hidden = false;
+  setPauseLabel(card, 'Pause');
+  job.state = 'downloading';
+  job.netError = false;
+  const ok = await window.api.resumeDownload(id);
+  if (!ok) {
+    handleDone({ id, ok: false, error: 'Could not continue this download — add the link again.' });
+  }
+}
+
+// When the connection comes back, pick up every job that stopped because it went
+// away. Nothing is re-downloaded; each one continues from where it stopped.
+window.addEventListener('online', () => {
+  const waiting = [...state.jobs.entries()].filter(([, j]) => j.state === 'error' && j.netError);
+  if (!waiting.length) return;
+  handleLog({ message: `Back online — continuing ${waiting.length} download${waiting.length > 1 ? 's' : ''}.` });
+  waiting.forEach(([id]) => retryJob(id));
+});
+
+window.addEventListener('offline', () => {
+  handleLog({ message: 'Connection lost. Downloads will continue when you are back online.', error: true });
+});
 
 async function togglePause(id) {
   const job = state.jobs.get(id);

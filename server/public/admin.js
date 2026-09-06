@@ -18,8 +18,76 @@ async function loadAll() {
   allKeys = k.keys || [];
   renderStats();
   renderKeys();
+
+  const s = await api('/admin/api/settings');
+  renderSettings(s.settings || {});
+
+  const d = await api('/admin/api/devices');
+  renderDevices(d.devices || []);
+
   const ev = await api('/admin/api/events');
   renderEvents(ev.events || []);
+}
+
+// ---------- free-trial settings ----------
+
+function renderSettings(s) {
+  $('setSignup').value = s.signupEnabled ? '1' : '0';
+  $('setTrial').value = s.trialDownloads;
+  $('setDays').value = s.defaultLicenseDays;
+  const badge = $('signupState');
+  badge.textContent = s.signupEnabled
+    ? `Open — ${s.trialDownloads} free downloads per device`
+    : 'Closed — purchase only';
+  badge.className = s.signupEnabled ? 'hint ok' : 'hint warn';
+}
+
+// ---------- devices: what the hardware lock holds ----------
+
+function renderDevices(devices) {
+  const tbody = $('devicesBody');
+  tbody.innerHTML = '';
+  if (!devices.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="hint">No devices registered yet.</td></tr>';
+    return;
+  }
+  for (const d of devices) {
+    const tr = document.createElement('tr');
+    const used = d.trialDownloads || 0;
+    tr.innerHTML = `
+      <td class="device"><small>${escape(d.deviceId).slice(0, 20)}…</small></td>
+      <td>${escape(d.email || '')}<br/><small class="device">${d.email ? '' : 'unbound'}</small></td>
+      <td class="key">${d.key ? escape(d.key) : '—'}</td>
+      <td>${used} / ${used + (d.trialRemaining || 0)}</td>
+      <td>${d.boundAt ? fmtDate(d.boundAt) : '—'}</td>
+      <td class="actions">
+        <button class="btn small ghost" data-dact="reset-trial">Reset trial</button>
+        ${d.email ? '<button class="btn small ghost" data-dact="unbind">Unbind</button>' : ''}
+        <button class="btn small danger" data-dact="delete">Delete</button>
+      </td>
+    `;
+    tr.querySelectorAll('button[data-dact]').forEach((b) => {
+      b.addEventListener('click', () => handleDeviceAction(b.dataset.dact, d));
+    });
+    tbody.appendChild(tr);
+  }
+}
+
+async function handleDeviceAction(act, d) {
+  const id = encodeURIComponent(d.deviceId);
+  if (act === 'reset-trial') {
+    if (!confirm(`Give this machine its ${d.trialDownloads || 0} used free downloads back?`)) return;
+    await api(`/admin/api/devices/${id}/reset-trial`, { method: 'POST' });
+  }
+  if (act === 'unbind') {
+    if (!confirm(`Unbind ${d.email} from this machine?\n\nThey can then activate on a new one, and this machine is free for another account. The trial count is kept.`)) return;
+    await api(`/admin/api/devices/${id}/unbind`, { method: 'POST' });
+  }
+  if (act === 'delete') {
+    if (!confirm('Forget this device completely?\n\nThis also clears its trial count, so it can claim a fresh free trial.')) return;
+    await api(`/admin/api/devices/${id}`, { method: 'DELETE' });
+  }
+  await loadAll();
 }
 
 function renderStats() {
@@ -56,6 +124,7 @@ function renderKeys() {
       <td>${escape(k.email || '')}<br/><small class="device">${escape(k.note || '')}</small></td>
       <td class="expiry">${formatExpiry(k)}</td>
       <td class="device">${escape(k.device_name || '')}${k.device_id ? `<br/><small>${escape(k.device_id).slice(0,16)}...</small>` : ''}</td>
+      <td>${trialCell(k)}</td>
       <td>${fmtDate(k.created_at)}</td>
       <td>${fmtDate(k.last_heartbeat)}</td>
       <td>${statusBadge(k.status)}</td>
@@ -64,6 +133,7 @@ function renderKeys() {
         <button class="btn small ghost" data-act="edit">Edit</button>
         <button class="btn small ghost" data-act="extend">+30d</button>
         ${k.device_id ? '<button class="btn small ghost" data-act="reset">Reset device</button>' : ''}
+        ${k.trial ? '<button class="btn small ghost" data-act="make-paid" title="Lift the free-download cap for good">Make paid</button>' : ''}
         ${k.blocked
           ? '<button class="btn small ghost" data-act="unblock">Unblock</button>'
           : '<button class="btn small danger" data-act="block">Block</button>'}
@@ -84,6 +154,16 @@ function statusBadge(status) {
   const s = status || 'pending';
   const label = s[0].toUpperCase() + s.slice(1);
   return `<span class="badge ${escape(s)}">${escape(label)}</span>`;
+}
+
+// Paid keys have no cap; trial keys show how much of the free quota the bound
+// machine has spent, and turn amber once it is gone.
+function trialCell(k) {
+  if (!k.trial) return '<span class="badge ok">Paid</span>';
+  const used = k.trial_used || 0;
+  const total = k.trial_total || 0;
+  const spent = total && used >= total;
+  return `<span class="badge ${spent ? 'warn' : ''}">${used} / ${total}</span>`;
 }
 
 function formatExpiry(k) {
@@ -150,6 +230,12 @@ async function handleAction(act, k) {
     loadAll();
     return;
   }
+  if (act === 'make-paid') {
+    if (!confirm(`Turn ${k.key} into a paid key?\n\nThe free-download cap is lifted permanently. Use this when someone has paid you directly.`)) return;
+    await api(`/admin/api/keys/${encodeURIComponent(k.key)}/make-paid`, { method: 'POST' });
+    await loadAll();
+    return;
+  }
   if (act === 'unrevoke') {
     await api(`/admin/api/keys/${encodeURIComponent(k.key)}/unrevoke`, { method: 'POST' });
     loadAll();
@@ -171,6 +257,36 @@ function openEdit(k) {
   $('editResult').textContent = '';
   $('editModal').classList.remove('hidden');
 }
+
+$('settingsSave').addEventListener('click', async () => {
+  const out = $('settingsResult');
+  out.textContent = 'Saving…';
+  out.className = 'hint';
+  try {
+    const res = await api('/admin/api/settings', {
+      method: 'POST',
+      body: {
+        signupEnabled: $('setSignup').value === '1',
+        trialDownloads: Number($('setTrial').value),
+        defaultLicenseDays: Number($('setDays').value),
+      },
+    });
+    // api() resolves with the body on failure rather than throwing, so the
+    // server's own message is what the admin sees.
+    if (!res.ok) {
+      out.textContent = res.error || 'Could not save.';
+      out.className = 'hint warn';
+      return;
+    }
+    renderSettings(res.settings || {});
+    out.textContent = 'Saved. This takes effect immediately.';
+    out.className = 'hint ok';
+    await loadAll();
+  } catch (e) {
+    out.textContent = e.message || 'Could not save.';
+    out.className = 'hint warn';
+  }
+});
 
 $('refreshBtn').addEventListener('click', loadAll);
 $('filterInput').addEventListener('input', renderKeys);

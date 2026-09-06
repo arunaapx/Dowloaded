@@ -14,6 +14,9 @@ const usage = require('./usage');
 
 module.exports = function createExtractRouter(deps) {
   const { jwt, JWT_SECRET, stmts, licenseState, logEvent, getIp } = deps;
+  // Read the cap through the shared settings getter so changing it in the admin
+  // panel takes effect immediately, without restarting the server.
+  const trialCap = () => (deps.settings ? deps.settings().trialDownloads : TRIAL_DOWNLOADS);
   const router = express.Router();
 
   // Dev/testing only: skip the license check. NEVER set this in production.
@@ -62,12 +65,14 @@ module.exports = function createExtractRouter(deps) {
     if (DEV_BYPASS || !req.license?.key) return next();
     const verdict = usage.check(req.license.key, getIp(req));
     if (!verdict.ok) {
-      logEvent(verdict.block ? 'usage-block' : 'usage-cap', req.license.key, getIp(req), verdict.reason);
-      if (verdict.block) { try { stmts.block.run(req.license.key, 'auto: too many devices', Date.now()); } catch {} }
+      // Only the daily cap can refuse now, and it clears itself at midnight.
+      // Nothing here ever writes blocked=1 to a licence.
+      logEvent('usage-cap', req.license.key, getIp(req), verdict.reason);
       return res.status(verdict.status).json({ ok: false, error: verdict.reason });
     }
     if (verdict.alert) {
-      logEvent('usage-anomaly', req.license.key, getIp(req), `${verdict.distinct} IPs within 1h`);
+      logEvent(verdict.severe ? 'usage-anomaly-high' : 'usage-anomaly', req.license.key, getIp(req),
+        `${verdict.distinct} IPs within 1h — review by hand, not auto-blocked`);
     }
     next();
   }
@@ -80,7 +85,7 @@ module.exports = function createExtractRouter(deps) {
     const isTrial = !!(row && row.trial);
     const deviceId = req.license?.deviceId || row?.device_id || '';
     const used = isTrial && deviceId ? (stmts.getDevice.get(deviceId)?.trialDownloads || 0) : 0;
-    return { isTrial, deviceId, used, exhausted: isTrial && used >= TRIAL_DOWNLOADS };
+    return { isTrial, deviceId, used, exhausted: isTrial && used >= trialCap() };
   }
 
   function trialGuard(req, res, next) {
@@ -90,7 +95,7 @@ module.exports = function createExtractRouter(deps) {
       logEvent('trial-exhausted', req.license?.key, getIp(req), `device ${String(req.trial.deviceId).slice(0, 12)}`);
       return res.status(403).json({
         ok: false,
-        error: `Free trial finished (${TRIAL_DOWNLOADS} downloads). Please purchase a key.`,
+        error: `Free trial finished (${trialCap()} downloads). Please purchase a key.`,
         trialExpired: true,
       });
     }
@@ -103,7 +108,7 @@ module.exports = function createExtractRouter(deps) {
   router.post('/authorize', limit, requireLicense, usageGuard, trialGuard, (req, res) => {
     if (req.trial?.isTrial && req.trial.deviceId) stmts.bumpDeviceTrial.run(req.trial.deviceId);
     if (req.license?.key) logEvent('authorize', req.license.key, getIp(req), req.trial?.isTrial ? 'trial' : 'paid');
-    const remaining = req.trial?.isTrial ? Math.max(0, TRIAL_DOWNLOADS - (req.trial.used + 1)) : null;
+    const remaining = req.trial?.isTrial ? Math.max(0, trialCap() - (req.trial.used + 1)) : null;
     res.json({ ok: true, trial: !!req.trial?.isTrial, trialRemaining: remaining });
   });
 

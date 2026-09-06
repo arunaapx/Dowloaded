@@ -45,8 +45,14 @@ function check(key, ip) {
   for (const [k, ts] of e.ips) if (now - ts > IP_WINDOW_MS) e.ips.delete(k);
   const distinct = e.ips.size;
 
+  // IP spread is REPORTED, never enforced. Auto-blocking a licence because it
+  // was seen from many addresses punishes VPN users, phone hotspots and anyone
+  // who moves between networks, and a wrongly blocked paying customer costs far
+  // more than the sharing it was meant to stop. The hardware lock in server.js
+  // is what actually limits an account to one machine; this is a signal an
+  // admin can act on by hand.
   if (distinct >= IP_BLOCK) {
-    return { ok: false, status: 403, reason: 'this license is being used from too many devices', block: true, distinct };
+    return { ok: true, alert: true, severe: true, distinct };
   }
   if (distinct >= IP_ALERT && !e.alerted) {
     e.alerted = true;

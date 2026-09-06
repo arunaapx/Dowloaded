@@ -7,11 +7,22 @@ const crypto = require('crypto');
 const { checkBinaries: coreCheckBinaries, startDownload } = require('./core/downloader');
 const { probe, search: ytSearch, listExtractors } = require('./core/extractor');
 
-// Network guards for the device's own yt-dlp (extraction + download).
+// Network guards for the device's own yt-dlp. Extraction wants to fail fast so a
+// dead link doesn't hang the paste; a download wants the opposite — it should
+// ride out a Wi-Fi drop rather than throw away a half-finished file.
 const YTDLP_OPTS = {
   socketTimeout: parseInt(process.env.VELOX_SOCKET_TIMEOUT_SEC || '20', 10),
   maxRetries: parseInt(process.env.VELOX_DL_RETRIES || '2', 10),
   timeoutMs: parseInt(process.env.VELOX_EXTRACT_TIMEOUT_SEC || '60', 10) * 1000,
+};
+
+// Download-only guards. 30 retries at 5s apart survives ~2.5 minutes offline
+// without the job ever failing; --continue (see buildArgs) means the retry picks
+// up from the bytes already on disk.
+const DOWNLOAD_OPTS = {
+  socketTimeout: parseInt(process.env.VELOX_DL_SOCKET_TIMEOUT_SEC || '30', 10),
+  maxRetries: parseInt(process.env.VELOX_DL_RETRIES_DOWNLOAD || '30', 10),
+  retrySleep: parseInt(process.env.VELOX_DL_RETRY_SLEEP_SEC || '5', 10),
 };
 
 let mainWindow;
@@ -190,7 +201,7 @@ async function licenseStatus() {
 }
 
 async function doSignup(email) {
-  const r = await postJson('/api/signup', { email, deviceId: deviceId() });
+  const r = await postJson('/api/signup', { email, deviceId: deviceId(), deviceName: deviceName() });
   if (r.status === 200 && r.body && r.body.ok) {
     return { ok: true, key: r.body.key, profile: r.body.profile || null, expiresAt: r.body.expiresAt || null };
   }
@@ -496,16 +507,24 @@ async function authorizeDownload() {
 // folder. Progress/log/done are forwarded to the renderer over IPC.
 function startLocalDownload(id, payload, sender) {
   const send = (channel, data) => { if (sender && !sender.isDestroyed()) sender.send(channel, { id, ...data }); };
-  const handle = startDownload({ ...YTDLP_OPTS, ...payload }, { binDir: electronBinDir() });
-  clientJobs.set(id, { handle, payload, sender, paused: false });
+  const handle = startDownload({ ...DOWNLOAD_OPTS, ...payload }, { binDir: electronBinDir() });
+  clientJobs.set(id, { handle, payload, sender, paused: false, failed: false });
 
   handle.on('progress', (d) => send('download-progress', { percent: d.percent, size: d.size, speed: d.speed, eta: d.eta }));
   handle.on('log', (d) => send('download-log', { message: d.message, error: d.error }));
   handle.on('done', (d) => {
-    clientJobs.delete(id);
-    if (d.cancelled) return; // paused/cancelled — UI already handled
-    if (d.ok) send('download-done', { ok: true, file: d.file, percent: 100 });
-    else send('download-done', { ok: false, error: d.error || 'download failed' });
+    if (d.cancelled) { clientJobs.delete(id); return; } // paused/cancelled — UI already handled
+    if (d.ok) {
+      clientJobs.delete(id);
+      send('download-done', { ok: true, file: d.file, percent: 100 });
+      return;
+    }
+    // Keep the job registered so Retry (and auto-retry when the network comes
+    // back) can restart it. yt-dlp's --continue resumes from the .part file, so
+    // nothing already downloaded is lost.
+    const cj = clientJobs.get(id);
+    if (cj) { cj.handle = null; cj.failed = true; }
+    send('download-done', { ok: false, error: d.error || 'download failed', resumable: !!cj });
   });
   return { ok: true };
 }
@@ -525,13 +544,18 @@ ipcMain.handle('pause-download', async (_e, id) => {
   return true;
 });
 
-// Resume: restart the local download for the same renderer id (no true resume).
+// Resume / retry: restart yt-dlp for the same renderer id. Used by the Pause
+// button, by the Retry button on a failed card, and by the automatic retry when
+// the network comes back. yt-dlp's --continue means it carries on from the
+// bytes already on disk rather than starting the file over.
 // Only re-checks the license (heartbeat) — it does NOT spend another trial credit.
 ipcMain.handle('resume-download', async (event, id) => {
   const license = await requireActiveLicenseForWork();
   if (!license.ok) return false;
   const cj = clientJobs.get(id);
   if (!cj) return false;
+  cj.paused = false;
+  cj.failed = false;
   const r = startLocalDownload(id, cj.payload, event.sender);
   return !!r.ok;
 });
