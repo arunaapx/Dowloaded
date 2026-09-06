@@ -210,7 +210,13 @@ function requireAdmin(req, res, next) {
   }
 }
 
-const loginLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
+const loginLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => res.status(429).json({ ok: false, error: 'Too many sign-in attempts. Please wait 15 minutes.', rateLimited: true }),
+});
 app.post('/api/admin-login', loginLimit, (req, res) => {
   const u = String(req.body?.username || '').trim();
   const p = String(req.body?.password || '');
@@ -231,9 +237,29 @@ app.post('/api/admin-logout', (_req, res) => {
 
 // --- public API ---
 
-const signupLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false });
-const activateLimit = rateLimit({ windowMs: 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
-const heartbeatLimit = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+// express-rate-limit answers with PLAIN TEXT by default. Every client here
+// parses JSON, so a rate-limited reply used to blow up in JSON.parse and the
+// user saw the word "parse" instead of being told to wait. Always answer JSON.
+function limited(windowMs, max, message) {
+  return rateLimit({
+    windowMs,
+    max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+      const mins = Math.max(1, Math.ceil(windowMs / 60000));
+      logEvent('rate-limited', null, getIp(req), req.path);
+      res.status(429).json({ ok: false, error: message, rateLimited: true, retryAfterMinutes: mins });
+    },
+  });
+}
+
+const signupLimit = limited(60 * 60 * 1000, 5,
+  'Too many sign-up attempts from this network. Please wait an hour, or paste a key you already have.');
+const activateLimit = limited(60 * 1000, 10,
+  'Too many activation attempts. Please wait a minute and try again.');
+const heartbeatLimit = limited(60 * 1000, 30,
+  'Too many requests. Please wait a minute.');
 
 app.post('/api/signup', signupLimit, (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();

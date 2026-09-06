@@ -131,6 +131,22 @@ function deviceName() {
   return `${os.hostname()} (${os.platform()})`;
 }
 
+// A reply that isn't JSON means something in front of the app answered: a rate
+// limiter sending plain text, a proxy error page, a captive portal. The user
+// used to see the bare word "parse". Tell them what to do instead.
+function humanHttpError(status, raw) {
+  const text = String(raw || '').trim();
+  if (status === 429 || /too many requests/i.test(text)) {
+    return 'Too many attempts from this network. Please wait a few minutes and try again.';
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    return 'The licence server is busy right now. Please try again in a moment.';
+  }
+  if (status >= 500) return 'The licence server had a problem. Please try again shortly.';
+  if (!status) return 'No reply from the licence server. Check your internet connection.';
+  return `Unexpected reply from the licence server (${status}).`;
+}
+
 function postJson(urlPath, body) {
   return new Promise((resolve) => {
     try {
@@ -144,7 +160,7 @@ function postJson(urlPath, body) {
         res.on('data', (c) => (data += c.toString()));
         res.on('end', () => {
           try { resolve({ status: res.statusCode, body: JSON.parse(data || '{}') }); }
-          catch { resolve({ status: res.statusCode, body: { ok: false, error: 'parse' } }); }
+          catch { resolve({ status: res.statusCode, body: { ok: false, error: humanHttpError(res.statusCode, data) } }); }
         });
       });
       req.on('error', (e) => resolve({ status: 0, body: { ok: false, error: e.message } }));
@@ -169,7 +185,7 @@ function postJsonAuth(urlPath, body, token) {
         res.on('data', (c) => (data += c.toString()));
         res.on('end', () => {
           try { resolve({ status: res.statusCode, body: JSON.parse(data || '{}') }); }
-          catch { resolve({ status: res.statusCode, body: { ok: false, error: 'parse' } }); }
+          catch { resolve({ status: res.statusCode, body: { ok: false, error: humanHttpError(res.statusCode, data) } }); }
         });
       });
       req.on('error', (e) => resolve({ status: 0, body: { ok: false, error: e.message } }));
