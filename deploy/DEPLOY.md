@@ -125,6 +125,68 @@ Open `https://REALDOMAIN/admin`, log in with `ADMIN_USER` / `ADMIN_PASS`, and
 create keys (set days or lifetime). The events feed shows `extract`, `resolve`,
 and any `usage-anomaly` / `usage-block` activity.
 
+## 8. Shipping an app update
+
+The desktop app checks `https://veloxdownloader.prolanka.online/updates/latest.yml`
+on launch and every six hours after that (`publish` in `package.json`). If a newer
+version is listed it downloads in the background and the status bar offers a
+restart. Nothing is installed behind the user's back, and the licence server is
+not in this path — an update still lands if that host is busy.
+
+One-time server setup:
+
+```bash
+sudo mkdir -p /opt/velox/updates
+sudo cp deploy/nginx-veloxdownloader.conf /etc/nginx/sites-available/veloxdownloader
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+To cut a release, one command does the whole thing:
+
+```bash
+npm run release              # 2.1.1 -> 2.1.2
+npm run release -- minor     # 2.1.1 -> 2.2.0
+npm run release -- 3.0.0     # exactly that
+npm run release -- --dry-run # show what it would do, change nothing
+```
+
+It bumps the version, builds, refuses to ship a build that is missing anything
+the app needs to boot, uploads the installer, then reads the feed back over
+HTTPS to prove clients can actually see the new version. The installer goes up
+before `latest.yml` does, so nobody ever sees a release pointing at a file that
+is still uploading. It also refreshes the installer the website hands to new
+buyers.
+
+The first run writes `release.config.json` and stops so you can check the server
+details. That file is gitignored — your host stays off GitHub. Key-based SSH has
+to work without a password prompt:
+
+```bash
+ssh-keygen -t ed25519
+ssh-copy-id root@REALDOMAIN
+ssh root@REALDOMAIN echo ok      # must print ok with no prompt
+```
+
+If you ever need to do it by hand, it is three files in this order — installer
+and blockmap first, `latest.yml` last:
+
+```bash
+scp dist/VeloxDownloader-Setup-2.1.2.exe \
+    dist/VeloxDownloader-Setup-2.1.2.exe.blockmap \
+    root@REALDOMAIN:/opt/velox/updates/
+scp dist/latest.yml root@REALDOMAIN:/opt/velox/updates/
+curl -s https://veloxdownloader.prolanka.online/updates/latest.yml
+```
+
+**Keep the previous release's `.exe` and `.blockmap` on the server.** That pair is
+what lets an older client download only the changed blocks instead of pulling the
+whole ~150 MB installer again.
+
+**The build is not code-signed** (`no signing info identified` in the build log).
+Updates install fine — electron-updater verifies the sha512 from `latest.yml` — but
+every new version trips Windows SmartScreen for the user. An OV/EV certificate in
+`CSC_LINK` / `CSC_KEY_PASSWORD` is what removes that warning.
+
 ---
 
 ## Operations notes
