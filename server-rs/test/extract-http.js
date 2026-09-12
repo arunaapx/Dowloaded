@@ -18,6 +18,13 @@ const PORT = 4019;
 const BASE = `http://127.0.0.1:${PORT}`;
 const LINK = 'https://www.youtube.com/watch?v=aqz-KE-bpKQ'; // Big Buck Bunny trailer
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'velox-smoke-'));
+// The debug build by default, because that is what a developer has just built.
+// VELOX_RUST_BIN points it at the release binary, which is what the server runs.
+const BINARY = process.env.VELOX_RUST_BIN || path.join(
+  ROOT,
+  'server-rs/target/debug',
+  process.platform === 'win32' ? 'velox-license.exe' : 'velox-license',
+);
 
 let pass = 0;
 let fail = 0;
@@ -64,7 +71,7 @@ async function waitForServer() {
 
 (async () => {
   const child = spawn(
-    path.join(ROOT, 'server-rs/target/debug', process.platform === 'win32' ? 'velox-license.exe' : 'velox-license'),
+    BINARY,
     [],
     {
       cwd: path.join(ROOT, 'server-rs'),

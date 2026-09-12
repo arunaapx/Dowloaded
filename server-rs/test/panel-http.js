@@ -18,6 +18,13 @@ const PORT = 4213;
 const BASE = `http://127.0.0.1:${PORT}`;
 const PASS = 'panel-smoke-pass';
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'velox-panel-'));
+// The debug build by default, because that is what a developer has just built.
+// VELOX_RUST_BIN points it at the release binary, which is what the server runs.
+const BINARY = process.env.VELOX_RUST_BIN || path.join(
+  ROOT,
+  'server-rs/target/debug',
+  process.platform === 'win32' ? 'velox-license.exe' : 'velox-license',
+);
 
 let pass = 0;
 let fail = 0;
@@ -27,7 +34,7 @@ const check = (name, ok, detail) => {
 };
 
 (async () => {
-  const server = spawn(path.join(ROOT, 'server-rs/target/debug/velox-license.exe'), [], {
+  const server = spawn(BINARY, [], {
     cwd: path.join(ROOT, 'server-rs'),
     env: { ...process.env, PORT: String(PORT), DATA_DIR: data, ADMIN_USER: 'admin', ADMIN_PASS: PASS, RUST_LOG: 'warn' },
     stdio: ['ignore', 'pipe', 'pipe'],

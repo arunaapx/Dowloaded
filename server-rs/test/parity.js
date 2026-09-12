@@ -22,7 +22,9 @@ const os = require('os');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '../..');
-const BINARY = path.join(
+// The debug build by default, because that is what a developer has just built.
+// VELOX_RUST_BIN points it at the release binary, which is what the server runs.
+const BINARY = process.env.VELOX_RUST_BIN || path.join(
   ROOT,
   'server-rs/target/debug',
   process.platform === 'win32' ? 'velox-license.exe' : 'velox-license',
