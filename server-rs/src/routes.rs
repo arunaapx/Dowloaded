@@ -7,9 +7,11 @@
 
 use crate::{
     auth::Tokens,
+    cookies::Jar,
     db::Db,
     extract::{Extractor, Selection},
     gate::{self, DailyUsage},
+    limit::Limits,
     model::{self, Key},
 };
 use axum::{
@@ -30,9 +32,20 @@ pub struct AppState {
     /// The per-key daily ceiling, kept in memory: it is a rate limit, not a
     /// record, and it clears itself at midnight.
     pub usage: DailyUsage,
+    /// The YouTube cookie jar: one file, treated as a password. The admin
+    /// panel manages it and the extractor uses it.
+    pub jar: Jar,
+    /// Sign-in, sign-up, activation and heartbeat limits, per address.
+    pub limits: Limits,
+    pub admin_user: String,
+    pub admin_pass: String,
+    /// The shared secret the store service calls /internal/issue-key with.
+    /// Empty means that route is switched off entirely.
+    pub internal_token: String,
     pub trial_downloads: i64,
     pub default_license_days: i64,
     pub default_device_limit: i64,
+    pub signup_per_hour: i64,
     pub started: std::time::Instant,
 }
 
@@ -40,14 +53,14 @@ pub type Shared = Arc<AppState>;
 
 // --------------------------------------------------------------- helpers
 
-fn ok(mut payload: Value) -> Json<Value> {
+pub(crate) fn ok(mut payload: Value) -> Json<Value> {
     if let Some(map) = payload.as_object_mut() {
         map.insert("ok".into(), Value::Bool(true));
     }
     Json(payload)
 }
 
-fn fail(status: StatusCode, payload: Value) -> (StatusCode, Json<Value>) {
+pub(crate) fn fail(status: StatusCode, payload: Value) -> (StatusCode, Json<Value>) {
     let mut body = payload;
     if let Some(map) = body.as_object_mut() {
         map.insert("ok".into(), Value::Bool(false));
@@ -55,14 +68,14 @@ fn fail(status: StatusCode, payload: Value) -> (StatusCode, Json<Value>) {
     (status, Json(body))
 }
 
-fn error(status: StatusCode, message: &str) -> (StatusCode, Json<Value>) {
+pub(crate) fn error(status: StatusCode, message: &str) -> (StatusCode, Json<Value>) {
     fail(status, json!({ "error": message }))
 }
 
 /// The address a request came from, honouring the proxy in front of us — the
 /// server only ever sees 127.0.0.1 otherwise, which would put every customer in
 /// the world on one line of the audit log.
-fn client_ip(headers: &HeaderMap) -> String {
+pub(crate) fn client_ip(headers: &HeaderMap) -> String {
     headers
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
@@ -125,6 +138,25 @@ async fn signup(
     let device_name: String = body.device_name.trim().chars().take(100).collect();
     let ip = client_ip(&headers);
     let s = settings(&state);
+
+    // Sign-ups per hour per address. Mobile carriers put hundreds of real
+    // customers behind one address, so the cap is generous and an operator can
+    // switch it off; the one-account-per-machine lock is what actually limits
+    // how many keys anyone can get.
+    if let Err(minutes) = state.limits.signup.check(
+        &ip,
+        model::signup_per_hour(&state.db, state.signup_per_hour),
+    ) {
+        model::log_event(&state.db, "rate-limited", None, &ip, "/api/signup");
+        return fail(
+            StatusCode::TOO_MANY_REQUESTS,
+            json!({
+                "error": "Too many sign-up attempts from this network. Please wait a while, or paste a key you already have.",
+                "rateLimited": true,
+                "retryAfterMinutes": minutes,
+            }),
+        );
+    }
 
     if !s.signup_enabled {
         model::log_event(&state.db, "signup-disabled", None, &ip, &email);
@@ -252,6 +284,18 @@ async fn activate(
     let ip = client_ip(&headers);
     let s = settings(&state);
 
+    if let Err(minutes) = state.limits.activate.check(&ip, state.limits.activate_max) {
+        model::log_event(&state.db, "rate-limited", None, &ip, "/api/activate");
+        return fail(
+            StatusCode::TOO_MANY_REQUESTS,
+            json!({
+                "error": "Too many activation attempts. Please wait a minute and try again.",
+                "rateLimited": true,
+                "retryAfterMinutes": minutes,
+            }),
+        );
+    }
+
     if key_id.is_empty() || device_id.is_empty() {
         return error(StatusCode::BAD_REQUEST, "missing fields");
     }
@@ -333,6 +377,17 @@ async fn heartbeat(
     Json(body): Json<HeartbeatBody>,
 ) -> impl IntoResponse {
     let ip = client_ip(&headers);
+    if let Err(minutes) = state.limits.heartbeat.check(&ip, state.limits.heartbeat_max) {
+        model::log_event(&state.db, "rate-limited", None, &ip, "/api/heartbeat");
+        return fail(
+            StatusCode::TOO_MANY_REQUESTS,
+            json!({
+                "error": "Too many requests. Please wait a minute.",
+                "rateLimited": true,
+                "retryAfterMinutes": minutes,
+            }),
+        );
+    }
     if body.token.trim().is_empty() {
         return error(StatusCode::BAD_REQUEST, "missing token");
     }

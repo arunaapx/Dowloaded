@@ -23,7 +23,10 @@ pub struct Extractor {
     socket_timeout: u32,
     max_retries: u32,
     timeout: Duration,
-    cookies: Option<PathBuf>,
+    /// The cookie jar, if one has been uploaded. Behind a lock because an admin
+    /// can replace it while the server runs, and an upload that only took effect
+    /// after a restart would look like it had not worked.
+    cookies: Mutex<Option<PathBuf>>,
     /// YouTube's default player client now refuses a growing share of ordinary
     /// videos while the android one still serves them, so both are asked for
     /// unless an operator says otherwise.
@@ -54,9 +57,17 @@ impl Extractor {
             socket_timeout: env_num("VELOX_SOCKET_TIMEOUT_SEC", 20),
             max_retries: env_num("VELOX_DL_RETRIES", 1),
             timeout: Duration::from_secs(env_num("VELOX_EXTRACT_TIMEOUT_SEC", 45) as u64),
-            cookies,
+            cookies: Mutex::new(cookies),
             player_clients,
             sites_cache: Mutex::new(None),
+        }
+    }
+
+    /// Point at a newly uploaded jar, or at nothing when one is deleted. Takes
+    /// effect on the next call.
+    pub fn set_cookies(&self, path: Option<PathBuf>) {
+        if let Ok(mut slot) = self.cookies.lock() {
+            *slot = path;
         }
     }
 
@@ -71,7 +82,7 @@ impl Extractor {
             "--fragment-retries".into(),
             self.max_retries.to_string(),
         ];
-        if let Some(cookies) = &self.cookies {
+        if let Some(cookies) = self.cookies.lock().ok().and_then(|c| c.clone()) {
             args.push("--cookies".into());
             args.push(cookies.display().to_string());
         }

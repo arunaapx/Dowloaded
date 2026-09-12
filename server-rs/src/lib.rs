@@ -2,10 +2,14 @@
 //! one-off import tool and the tests share exactly one definition of the
 //! rules a licence lives by.
 
+pub mod admin;
+pub mod app;
 pub mod auth;
+pub mod cookies;
 pub mod db;
 pub mod extract;
 pub mod gate;
+pub mod limit;
 pub mod importer;
 pub mod model;
 pub mod routes;

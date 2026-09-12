@@ -13,6 +13,7 @@ axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs", "trace"] }
 dotenvy = "0.15"
 tracing = "0.1"
@@ -28,6 +29,11 @@ rand = "0.8"
 sha2 = "0.10"
 hex = "0.4"
 time = { version = "0.3", features = ["formatting", "macros"] }
+
+# Driving the router directly in tests: real requests, real status codes, no
+# socket and no port to collide with another run.
+[dev-dependencies]
+http-body-util = "0.1"
 
 [profile.release]
 opt-level = 2

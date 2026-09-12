@@ -9,10 +9,13 @@ use axum::http::StatusCode;
 use serde_json::{json, Value};
 use velox_license::{
     auth::Tokens,
+    cookies::Jar,
     db::Db,
     extract::Extractor,
     gate::{self, DailyUsage},
-    importer, model,
+    importer,
+    limit::Limits,
+    model,
     routes::AppState,
 };
 
@@ -46,9 +49,17 @@ fn server(cap: i64, alert_at: usize) -> AppState {
         // process, which is the point.
         extractor: Extractor::from_env(None),
         usage: DailyUsage::new(cap, alert_at),
+        // Nothing in this file touches the admin side; these are here because
+        // the gates live in the same state the panel does.
+        jar: Jar::new(std::path::Path::new(".")),
+        limits: Limits::from_env(),
+        admin_user: "admin".into(),
+        admin_pass: String::new(),
+        internal_token: String::new(),
         trial_downloads: 5,
         default_license_days: 30,
         default_device_limit: 1,
+        signup_per_hour: 60,
         started: std::time::Instant::now(),
     }
 }

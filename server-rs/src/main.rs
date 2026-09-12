@@ -7,23 +7,23 @@
 //!   cd server && npm test                                   # the Node one
 //!   VELOX_TEST_BASE=http://127.0.0.1:4011 npm test           # this one
 //!
-//! Here now: configuration, the ledger, the admin panel's static files, the
-//! three calls the desktop app makes — sign-up, activation and the heartbeat —
-//! the public pricing the website reads, and the gated extraction routes the app
-//! cannot work without. The admin API is the phase after this; anything not yet
-//! ported answers 501 saying exactly that, rather than pretending to be a
-//! licence server.
+//! Here now: everything the Node server does. The three calls the desktop app
+//! makes, the public pricing the website reads, the gated extraction routes, and
+//! the admin API behind them — keys, devices, plans, notices, settings and the
+//! YouTube cookie jar — serving the Node panel's own HTML unchanged. What is
+//! left is proving the two agree (the same suites against each in turn) and then
+//! the cutover.
 
-use axum::{http::StatusCode, response::IntoResponse, routing::get, Json, Router};
-use serde_json::json;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
-use tower_http::services::ServeDir;
 use velox_license::{
+    app::app,
     auth::Tokens,
+    cookies::Jar,
     db::Db,
     extract::Extractor,
     gate::DailyUsage,
-    routes::{self, AppState, Shared},
+    limit::Limits,
+    routes::{AppState, Shared},
 };
 
 // ------------------------------------------------------------------ config
@@ -33,7 +33,6 @@ use velox_license::{
 /// The names match the Node server's, so one `.env` serves both while they run
 /// side by side — a port that needed its own configuration would be a port
 /// nobody could safely cut over, or roll back.
-#[allow(dead_code)]
 struct Config {
     port: u16,
     data_dir: PathBuf,
@@ -54,6 +53,11 @@ struct Config {
     /// hour is worth an admin's attention.
     daily_cap: i64,
     ip_alert: usize,
+    /// Sign-ups per hour from one address, unless the panel says otherwise.
+    signup_per_hour: i64,
+    /// The secret the store service calls /internal/issue-key with. Empty
+    /// switches that route off rather than leaving it open.
+    internal_token: String,
 }
 
 fn env_string(key: &str, fallback: &str) -> String {
@@ -85,35 +89,10 @@ impl Config {
             bin_dir: std::env::var("VELOX_BIN_DIR").ok().map(PathBuf::from),
             daily_cap: env_number("VELOX_DAILY_CAP", 300),
             ip_alert: env_number("VELOX_IP_ALERT", 6),
+            signup_per_hour: env_number("VELOX_SIGNUP_PER_HOUR", 60),
+            internal_token: env_string("VELOX_INTERNAL_TOKEN", ""),
         }
     }
-}
-
-// ------------------------------------------------------------------ routes
-
-/// The same shape the Node server answers with: the release script and the
-/// deploy checks both read it.
-async fn healthz(axum::extract::State(state): axum::extract::State<Shared>) -> impl IntoResponse {
-    Json(json!({ "ok": true, "uptime": state.started.elapsed().as_secs_f64() }))
-}
-
-/// Anything not ported yet says so plainly rather than answering wrongly.
-async fn not_built_yet() -> impl IntoResponse {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(json!({ "ok": false, "error": "this route has not been ported yet" })),
-    )
-}
-
-fn app(state: Shared, public_dir: PathBuf) -> Router {
-    Router::new()
-        .route("/healthz", get(healthz))
-        .merge(routes::router())
-        // The admin panel is served exactly as the Node server serves it. It is
-        // not ported and does not need to be.
-        .nest_service("/admin", ServeDir::new(public_dir))
-        .fallback(not_built_yet)
-        .with_state(state)
 }
 
 #[tokio::main]
@@ -139,23 +118,51 @@ async fn main() {
         Err(e) => tracing::warn!("ledger opened but could not be counted: {e}"),
     }
 
+    if velox_license::model::seed_plans(&db) {
+        tracing::info!("seeded the three pricing tiers, unpriced and unpublished");
+    }
+
     let tokens = Tokens::from_data_dir(&config.data_dir, config.token_ttl_hours)
         .expect("cannot read or create the token secret");
 
     let public_dir = config.public_dir.clone();
+    let jar = Jar::new(&config.data_dir);
+    let extractor = Extractor::from_env(config.bin_dir.as_deref());
+    // A jar uploaded before the last restart is used again without anyone having
+    // to re-upload it: a restart must not quietly drop back to anonymous
+    // extraction, because the failure looks like YouTube blocking the server.
+    if let Some(path) = jar.active_path() {
+        tracing::info!("using the stored YouTube cookie jar");
+        extractor.set_cookies(Some(path));
+    }
+    if config.internal_token.is_empty() {
+        tracing::warn!("VELOX_INTERNAL_TOKEN is not set - /internal/issue-key is switched off");
+    }
+
     let state: Shared = Arc::new(AppState {
         db,
         tokens,
-        extractor: Extractor::from_env(config.bin_dir.as_deref()),
+        extractor,
         usage: DailyUsage::new(config.daily_cap, config.ip_alert),
+        jar,
+        limits: Limits::from_env(),
+        admin_user: config.admin_user.clone(),
+        admin_pass: config.admin_pass.clone(),
+        internal_token: config.internal_token.clone(),
         trial_downloads: config.trial_downloads,
         default_license_days: config.default_license_days,
         default_device_limit: config.default_device_limit,
+        signup_per_hour: config.signup_per_hour,
         started: Instant::now(),
     });
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     let listener = tokio::net::TcpListener::bind(addr).await.expect("cannot bind");
     tracing::info!("velox-license (rust) listening on http://{addr}");
-    axum::serve(listener, app(state, public_dir)).await.expect("server stopped");
+    tracing::info!("admin user: {}", config.admin_user);
+    // with_connect_info because /internal/issue-key checks the peer address
+    // itself: a shared token alone would be one nginx mistake away from being
+    // reachable from the internet.
+    let service = app(state, &public_dir).into_make_service_with_connect_info::<SocketAddr>();
+    axum::serve(listener, service).await.expect("server stopped");
 }

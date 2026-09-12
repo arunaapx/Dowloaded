@@ -23,6 +23,20 @@ pub struct Claims {
     pub exp: i64,
 }
 
+/// An admin session. Nothing about a licence: it says only that whoever holds
+/// this cookie signed in with the panel password, and when that stops being
+/// true.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminClaims {
+    pub role: String,
+    pub u: String,
+    pub exp: i64,
+}
+
+/// How long a panel session lasts. Short enough that a forgotten browser on
+/// someone else's machine stops being a way in by the end of the day.
+pub const ADMIN_TTL_SECONDS: i64 = 12 * 3600;
+
 pub struct Tokens {
     encoding: EncodingKey,
     decoding: DecodingKey,
@@ -79,6 +93,26 @@ impl Tokens {
 
     pub fn ttl_seconds(&self) -> i64 {
         self.ttl_hours * 3600
+    }
+
+    /// Signed with the same secret as a licence token, and deliberately a
+    /// different shape: a licence token has no role, so it can never be
+    /// presented as an admin session, and an admin cookie names no key, so it
+    /// can never be spent as a licence.
+    pub fn issue_admin(&self, user: &str) -> Option<String> {
+        let claims = AdminClaims {
+            role: "admin".to_string(),
+            u: user.to_string(),
+            exp: crate::model::now_ms() / 1000 + ADMIN_TTL_SECONDS,
+        };
+        encode(&Header::new(Algorithm::HS256), &claims, &self.encoding).ok()
+    }
+
+    pub fn verify_admin(&self, token: &str) -> Option<AdminClaims> {
+        let mut rules = Validation::new(Algorithm::HS256);
+        rules.required_spec_claims.clear();
+        let claims = decode::<AdminClaims>(token, &self.decoding, &rules).ok()?.claims;
+        (claims.role == "admin").then_some(claims)
     }
 }
 
