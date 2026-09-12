@@ -660,9 +660,18 @@ app.use('/api', createExtractRouter({ jwt, JWT_SECRET, stmts, licenseState, logE
 // ever misconfigured to forward /internal.
 const INTERNAL_TOKEN = process.env.VELOX_INTERNAL_TOKEN || '';
 
+// Loopback, and not through a proxy.
+//
+// The socket address alone is not the test it looks like: behind nginx every
+// request arrives from 127.0.0.1, so a POST from the internet passed this check
+// and only the shared token refused it. A forwarded-for header is the proxy
+// saying the request came from outside, and nginx now also returns 404 for
+// /internal/ — three guards, because this route hands out licences.
 function isLoopback(req) {
   const addr = (req.socket && req.socket.remoteAddress) || '';
-  return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+  const local = addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+  const proxied = !!(req.headers['x-forwarded-for'] || req.headers['x-real-ip']);
+  return local && !proxied;
 }
 
 function internalTokenOk(supplied) {

@@ -999,7 +999,13 @@ async fn issue_key(
             "internal API disabled (VELOX_INTERNAL_TOKEN unset)",
         );
     }
-    if !peer.ip().is_loopback() {
+    // Loopback, and not through a proxy. The second half matters as much as the
+    // first: behind nginx every request arrives from 127.0.0.1, so the socket
+    // address alone says nothing - a request from the internet looks exactly like
+    // one from the store service next door. A forwarded-for header is the proxy
+    // saying "this came from outside", and that is enough to refuse.
+    let forwarded = headers.contains_key("x-forwarded-for") || headers.contains_key("x-real-ip");
+    if !peer.ip().is_loopback() || forwarded {
         model::log_event(&state.db, "internal-remote-attempt", None, &ip, "issue-key");
         return error(StatusCode::FORBIDDEN, "forbidden");
     }

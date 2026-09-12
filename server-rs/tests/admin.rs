@@ -904,6 +904,86 @@ async fn a_real_jar_is_stored_and_never_comes_back_out() {
 // ----------------------------------------------------------------- internal
 
 #[tokio::test]
+async fn a_forwarded_request_is_never_a_local_one() {
+    let (state, _dir) = server();
+    // The hole this closes: behind a proxy every request arrives from 127.0.0.1,
+    // so the peer address alone cannot tell the store service next door from
+    // somebody on the internet. A forwarded-for header is the proxy saying where
+    // the request really came from.
+    //
+    // Everything else here is in order - a loopback peer and the right token - so
+    // the header is the only thing standing in the way.
+    let mut request = Request::builder()
+        .method(Method::POST)
+        .uri("/internal/issue-key")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("x-forwarded-for", "203.0.113.9")
+        .header("x-internal-token", "test-internal-token")
+        .body(Body::from(json!({ "email": "outsider@example.com", "days": 365 }).to_string()))
+        .unwrap();
+    request.extensions_mut().insert(axum::extract::ConnectInfo(std::net::SocketAddr::from((
+        [127, 0, 0, 1],
+        44444,
+    ))));
+
+    let response = app(state.clone(), &PathBuf::from("../server/public"))
+        .oneshot(request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert!(
+        model::find_by_email(&state.db, "outsider@example.com").is_none(),
+        "no licence was handed out"
+    );
+}
+
+#[tokio::test]
+async fn a_genuine_local_call_still_gets_its_key() {
+    let (state, _dir) = server();
+    // The other half: the store service, on this machine, with the token, and no
+    // proxy in between. If this stops working nobody who pays gets a key.
+    let mut request = Request::builder()
+        .method(Method::POST)
+        .uri("/internal/issue-key")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("x-internal-token", "test-internal-token")
+        .body(Body::from(json!({ "email": "Buyer@Example.com", "days": 365, "note": "payhere" }).to_string()))
+        .unwrap();
+    request.extensions_mut().insert(axum::extract::ConnectInfo(std::net::SocketAddr::from((
+        [127, 0, 0, 1],
+        44445,
+    ))));
+
+    let response = app(state.clone(), &PathBuf::from("../server/public")).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    let key = body["key"].as_str().expect("a key for the buyer");
+    let row = model::find_key(&state.db, key).expect("and it is in the ledger");
+    assert_eq!(row.email.as_deref(), Some("buyer@example.com"), "stored lower-case");
+    assert!(!row.trial, "somebody who paid is not on a trial");
+    assert_eq!(model::days_remaining(row.expires_at), Some(365));
+}
+
+#[tokio::test]
+async fn a_local_call_without_the_token_gets_nothing() {
+    let (state, _dir) = server();
+    let mut request = Request::builder()
+        .method(Method::POST)
+        .uri("/internal/issue-key")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("x-internal-token", "not-the-token")
+        .body(Body::from(json!({ "email": "thief@example.com", "days": 3650 }).to_string()))
+        .unwrap();
+    request.extensions_mut().insert(axum::extract::ConnectInfo(std::net::SocketAddr::from((
+        [127, 0, 0, 1],
+        44446,
+    ))));
+    let response = app(state.clone(), &PathBuf::from("../server/public")).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert!(model::find_by_email(&state.db, "thief@example.com").is_none());
+}
+
+#[tokio::test]
 async fn the_internal_route_is_shut_to_the_internet() {
     let (state, _dir) = server();
     // No session is involved: this one is for the store service, and it is
