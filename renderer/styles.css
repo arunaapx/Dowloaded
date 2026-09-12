@@ -1,3 +1,11 @@
+/* The hidden attribute must win over any display a class sets.
+   [hidden] and a class selector have the same specificity, so a later
+   "display: flex" silently beats it - which is why .ctrl-btn[hidden] had to
+   exist as a one-off, and why the Videos/Playlists toggle and the Hold queue
+   button both stayed on screen after being marked hidden. One rule here means
+   the attribute can be trusted everywhere. */
+[hidden] { display: none !important; }
+
 * { box-sizing: border-box; }
 
 /* Blue theme — royal blue gradient on a cool deep navy base. */
@@ -254,6 +262,25 @@ body.light .side-btn.active { color: #5a3f10; }
   color: var(--text-faint);
 }
 .statusbar .status-version { font-family: 'Consolas', monospace; color: var(--text-faint); }
+
+/* Update pill. Sits quietly next to the version until there is something to say,
+   and only becomes a button once a build is downloaded and waiting to install. */
+.statusbar .update-pill {
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: default;
+}
+.statusbar .update-pill[data-state="ready"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  cursor: pointer;
+}
+.statusbar .update-pill[data-state="ready"]:hover { background: var(--accent); color: #fff; }
 
 .brand {
   display: flex;
@@ -747,7 +774,6 @@ input[type="text"]:focus, input[type="url"]:focus {
 .ctrl-btn.danger:hover { color: var(--danger); }
 .ctrl-btn svg { width: 13px; height: 13px; }
 /* display:inline-flex above would otherwise beat the hidden attribute. */
-.ctrl-btn[hidden] { display: none; }
 
 .subsection-title {
   font-size: 12px;
@@ -1633,4 +1659,856 @@ body.light {
   --text:        #0c1626;
   --text-dim:    #475569;
   --text-faint:  #7a8aa3;
+}
+/* Data Table Styles */
+.velox-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: var(--velox-text);
+}
+.velox-table th {
+  text-align: left;
+  padding: 10px 12px;
+  color: var(--velox-text-dim);
+  font-weight: 600;
+  border-bottom: 1px solid var(--velox-border-strong);
+  position: sticky;
+  top: 0;
+  /* Must be opaque: rows scroll underneath it. --velox-bg-app is the only
+     background token that is solid in both themes. */
+  background: var(--velox-bg-app);
+  white-space: nowrap;
+  z-index: 10;
+}
+.velox-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--velox-border);
+  vertical-align: middle;
+}
+.velox-table tr:hover td {
+  background: var(--velox-bg-pill);
+}
+.velox-table .row-selected td {
+  background: rgba(74, 144, 226, 0.1);
+}
+.tbl-actions {
+  display: flex;
+  gap: 8px;
+}
+.tbl-icon-btn {
+  background: none;
+  border: none;
+  color: var(--velox-text-dim);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tbl-icon-btn:hover {
+  color: var(--velox-text);
+  background: rgba(255,255,255,0.1);
+}
+
+/* ---------------- Search tab: site picker ---------------- */
+
+.site-filter { display: flex; align-items: center; gap: 8px; }
+
+.site-picker-btn {
+  padding: 6px 10px;
+  border-radius: var(--velox-r-sm);
+  border: 1px solid var(--velox-border-strong);
+  background: var(--velox-bg-card);
+  color: var(--velox-text);
+  width: 200px;
+  font-size: 13px;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.site-picker-btn:hover { border-color: var(--velox-border-accent); }
+.site-picker-btn > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-mode-badge {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.site-mode-badge.mode-direct  { color: var(--velox-success); border-color: rgba(110, 231, 163, 0.35); background: rgba(110, 231, 163, 0.10); }
+.site-mode-badge.mode-browser { color: var(--velox-accent);  border-color: var(--velox-border-accent);  background: rgba(108, 196, 255, 0.10); }
+.site-mode-badge.mode-link    { color: var(--velox-warning); border-color: rgba(252, 211, 77, 0.35);  background: rgba(252, 211, 77, 0.10); }
+
+/* Rides on .modal-backdrop/.modal/.modal-wide, which carry the overlay,
+   centring and z-index. Only the extra width and the body layout are new. */
+.site-picker-modal.modal-wide {
+  width: 780px;
+  max-width: 92vw;
+  height: 78vh;
+  max-height: 82vh;
+}
+.site-picker-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.site-picker-search {
+  width: 100%;
+  padding: 10px;
+  border-radius: var(--velox-r-md);
+  border: 1px solid var(--velox-border);
+  background: var(--velox-bg-input);
+  color: var(--velox-text);
+}
+
+.site-picker-cats { display: flex; flex-wrap: wrap; gap: 6px; }
+.site-picker-cats button {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--velox-border);
+  background: var(--velox-bg-pill);
+  color: var(--velox-text-dim);
+  cursor: pointer;
+}
+.site-picker-cats button:hover { color: var(--velox-text); }
+.site-picker-cats button.active {
+  background: var(--velox-bg-pill-active);
+  border-color: var(--velox-border-accent);
+  color: var(--velox-text);
+}
+
+.site-picker-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--velox-text-faint);
+}
+.site-picker-legend .dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+.dot-direct  { background: var(--velox-success); }
+.dot-browser { background: var(--velox-accent); }
+.dot-link    { background: var(--velox-warning); }
+.site-picker-nsfw { margin-left: auto; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+.site-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+.site-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  text-align: left;
+  background: var(--velox-bg-card);
+  border: 1px solid var(--velox-border);
+  border-radius: var(--velox-r-sm);
+  color: var(--velox-text);
+  font-size: 13px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.site-picker-item:hover { border-color: var(--velox-border-accent); background: var(--velox-bg-card-2); }
+.site-picker-item.selected { border-color: var(--velox-accent); background: var(--velox-bg-pill-active); }
+.site-picker-item.special { font-weight: 600; border-color: var(--velox-border-accent); }
+.site-picker-item .dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; }
+.site-picker-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.site-picker-item .cat { font-size: 10px; color: var(--velox-text-faint); white-space: nowrap; }
+.site-picker-empty { grid-column: 1 / -1; color: var(--velox-text-dim); padding: 20px; text-align: center; }
+
+/* Browser-tab hand-off card shown when a site has no in-app search */
+.search-handoff {
+  background: var(--velox-bg-card);
+  border: 1px solid var(--velox-border-accent);
+  border-radius: var(--velox-r-md);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.search-handoff h4 { margin: 0; font-size: 15px; color: var(--velox-text); }
+.search-handoff p { margin: 0; font-size: 13px; color: var(--velox-text-dim); line-height: 1.5; }
+.search-handoff .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+
+/* Search in flight: keep something moving so a slow query does not read
+   as a frozen tab. */
+.search-status.searching {
+  position: relative;
+  padding-bottom: 8px;
+}
+.search-status.searching::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg,
+    rgba(108, 196, 255, 0) 0%,
+    var(--velox-accent) 50%,
+    rgba(108, 196, 255, 0) 100%);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: velox-scan 1.1s ease-in-out infinite;
+}
+@keyframes velox-scan {
+  0%   { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
+}
+
+.search-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--velox-border);
+  border-radius: var(--velox-r-md);
+  background: var(--velox-bg-card);
+}
+.search-skeleton .sk-thumb {
+  width: 96px;
+  height: 54px;
+  border-radius: 6px;
+  flex: 0 0 auto;
+}
+.search-skeleton .sk-lines { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.search-skeleton .sk-line { height: 10px; border-radius: 5px; width: 70%; }
+.search-skeleton .sk-line.short { width: 35%; }
+.search-skeleton .sk-thumb,
+.search-skeleton .sk-line {
+  background: linear-gradient(90deg,
+    var(--velox-bg-pill) 25%,
+    var(--velox-bg-card-2) 50%,
+    var(--velox-bg-pill) 75%);
+  background-size: 200% 100%;
+  animation: velox-shimmer 1.3s linear infinite;
+}
+@keyframes velox-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* No site chosen yet: the picker is the next thing to click, so make it the
+   thing that draws the eye. */
+.site-picker-btn.unset {
+  border-color: var(--velox-border-accent);
+  color: var(--velox-text-dim);
+  box-shadow: 0 0 0 3px rgba(108, 196, 255, 0.10);
+}
+.site-picker-btn.unset:hover { color: var(--velox-text); }
+
+/* Infinite scroll: the tripwire under the last result, and the note that
+   reports what the feed is doing. */
+.search-sentinel {
+  height: 1px;
+  width: 100%;
+  flex: 0 0 auto;
+}
+.search-feed-note {
+  padding: 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--velox-text-dim);
+}
+
+/* ---------------- Bulk selection in the Search tab ---------------- */
+
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  border: 1px solid var(--velox-border-strong);
+  border-radius: var(--velox-r-md);
+  background: var(--velox-bg-card);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  backdrop-filter: blur(6px);
+}
+.bulk-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--velox-text);
+  cursor: pointer;
+  user-select: none;
+}
+.bulk-all input { width: 15px; height: 15px; cursor: pointer; }
+.bulk-count {
+  font-size: 12px;
+  color: var(--velox-text-dim);
+  min-width: 150px;
+}
+.bulk-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.bulk-actions button:disabled { opacity: 0.45; cursor: default; }
+
+/* The checkbox column on each result row */
+.res-pick {
+  display: flex;
+  align-items: center;
+  padding: 0 4px 0 2px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.res-pick input { width: 16px; height: 16px; cursor: pointer; }
+
+.search-item.picked {
+  border-color: var(--velox-border-accent);
+  background: var(--velox-bg-pill-active);
+}
+/* Rows already handed to the download queue */
+.search-item.queued { opacity: 0.55; }
+
+/* ---------------- Result preview player ---------------- */
+
+.preview-modal {
+  width: 900px;
+  max-width: 94vw;
+  padding: 20px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.preview-modal .modal-title {
+  max-width: 640px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preview-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 62vh;
+  background: #000;
+  border-radius: var(--velox-r-sm);
+  overflow: hidden;
+}
+.preview-stage .preview-view {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: inline-flex;
+}
+.preview-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Play affordance over each result thumbnail */
+.search-item .res-play {
+  /* Keeps the .res-thumb box and background; only the button chrome is reset. */
+  position: relative;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.search-item .res-play .play-badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: inherit;
+  transition: opacity 0.12s ease;
+  color: #fff;
+}
+.search-item .res-play .play-badge svg { width: 26px; height: 26px; }
+.search-item .res-play:hover .play-badge,
+.search-item .res-play:focus-visible .play-badge { opacity: 1; }
+
+/* Torrent refusals (trial used up, licence not active). Sits between the
+   toolbar and the table so the reason is next to the button that was pressed. */
+.torrent-notice {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--velox-danger);
+  background: rgba(239, 68, 68, 0.10);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+/* Proxy setting. Taller than the other rows because it holds an address, a
+   scope and a test result, so it stacks instead of sitting on one line. */
+.setting-row-stack { align-items: flex-start; gap: 18px; }
+.proxy-controls { display: flex; flex-direction: column; gap: 8px; min-width: 320px; }
+.proxy-line { display: flex; align-items: center; gap: 8px; }
+.proxy-input,
+.proxy-select {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--velox-text);
+  background: var(--velox-bg-card);
+  border: 1px solid var(--velox-border);
+}
+.proxy-input:focus,
+.proxy-select:focus { outline: none; border-color: var(--velox-accent); }
+.proxy-status { font-size: 12px; line-height: 1.45; min-height: 16px; color: var(--velox-text-dim); }
+.proxy-status.ok   { color: var(--velox-success, #34d399); }
+.proxy-status.bad  { color: var(--velox-danger); }
+.proxy-status.busy { color: var(--velox-text-dim); }
+
+/* ---- Downloads header + queue -------------------------------------------
+   Queued jobs were previously invisible here, so a bulk pick of forty looked
+   like three downloads that had stalled. */
+.downloads-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 10px;
+}
+.downloads-head .section-title { margin: 0; }
+
+.queue-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--velox-text-dim);
+}
+.queue-summary { white-space: nowrap; }
+.queue-limit { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.queue-limit select {
+  padding: 3px 6px;
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--velox-text);
+  background: var(--velox-bg-card);
+  border: 1px solid var(--velox-border);
+}
+.queue-limit select:focus { outline: none; border-color: var(--velox-accent); }
+
+/* A queued card is the same card, reading as not-yet-started rather than as a
+   separate kind of thing: no progress bar, dimmed thumbnail, quieter text. */
+.job.queued { border-style: dashed; }
+.job.queued .job-thumb { opacity: .55; }
+.job.queued .job-title { opacity: .8; }
+.job.queued .bar { visibility: hidden; }
+.job.queued .job-state {
+  color: var(--velox-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Playlist picker -----------------------------------------------------
+   A playlist link used to download exactly one video with no sign the rest
+   existed. This is where the rest of them show up. */
+/* ---- Torrent file picker ---------------------------------------------------
+   Opens once a torrent's file list is known and before anything downloads, so
+   only the ticked files are fetched. A row's Files button reopens it. */
+.tfiles-modal.modal-wide { width: 720px; }
+.tfiles-name {
+  margin: -6px 0 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tfiles-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.tfiles-filter {
+  flex: 1;
+  min-width: 120px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.tfiles-summary {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.tfiles-list {
+  flex: 1;
+  min-height: 200px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.tfiles-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.tfiles-row[hidden] { display: none; }
+.tfiles-row:hover { background: rgba(79, 159, 255, 0.08); }
+.tfiles-row input { margin: 0; accent-color: var(--accent); }
+.tfiles-path {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.tfiles-dir { color: var(--text-faint); }
+.tfiles-pct,
+.tfiles-size {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.tfiles-pct { color: var(--accent); }
+.tfiles-size { min-width: 72px; text-align: right; }
+.tfiles-error { margin-top: 10px; }
+.tfiles-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.playlist-modal { max-width: 720px; }
+
+.playlist-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--velox-border);
+  font-size: 13px;
+}
+.playlist-all,
+.playlist-folder { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.playlist-folder { color: var(--velox-text-dim); }
+.playlist-range { display: flex; align-items: center; gap: 6px; color: var(--velox-text-dim); }
+.playlist-range input {
+  width: 62px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--velox-text);
+  background: var(--velox-bg-card);
+  border: 1px solid var(--velox-border);
+}
+.playlist-range input:focus { outline: none; border-color: var(--velox-accent); }
+
+.playlist-list { max-height: 46vh; overflow-y: auto; padding: 6px 0; }
+
+.pl-row {
+  display: grid;
+  grid-template-columns: auto 2.4em 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 18px;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+.pl-row:hover { background: var(--velox-bg-app); }
+.pl-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--velox-text-dim);
+  font-size: 12px;
+}
+.pl-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-dur {
+  font-variant-numeric: tabular-nums;
+  color: var(--velox-text-dim);
+  font-size: 12px;
+}
+.pl-row.unavailable { opacity: .5; cursor: default; }
+
+.playlist-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--velox-border);
+}
+.playlist-picked { flex: 1; font-size: 13px; color: var(--velox-text-dim); }
+
+/* ---- Videos / Playlists toggle in Search --------------------------------- */
+.search-kind { display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; background: var(--velox-bg-card); border: 1px solid var(--velox-border); }
+.search-kind .seg-btn {
+  padding: 4px 11px;
+  border: 0;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--velox-text-dim);
+  background: transparent;
+}
+.search-kind .seg-btn.active { color: var(--velox-text); background: var(--velox-bg-app); }
+.search-kind .seg-btn:focus-visible { outline: 2px solid var(--velox-accent); outline-offset: 1px; }
+
+/* A playlist result is a container, not a file: no bulk tick and no preview,
+   so the row keeps its columns without an empty checkbox sitting in one. */
+.res-pick-empty { display: block; width: 18px; }
+.search-item.playlist-item .res-thumb .play-badge { background: rgba(0, 0, 0, .62); }
+
+/* ---- Mandatory update gate ----------------------------------------------
+   Covers everything, including the lock screen, because an out-of-date build
+   should not be usable at all. Only raised once an update is confirmed to
+   exist: an unreachable update server must never strand a paying user. */
+.update-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--velox-bg-app);
+}
+.update-gate-card {
+  width: min(420px, 100%);
+  padding: 30px 28px 24px;
+  border-radius: 12px;
+  text-align: center;
+  background: var(--velox-bg-card);
+  border: 1px solid var(--velox-border);
+}
+.update-gate-mark { color: var(--velox-accent); margin-bottom: 10px; }
+.update-gate h2 { margin: 0 0 8px; font-size: 19px; color: var(--velox-text); }
+.update-gate p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--velox-text-dim); }
+.update-gate-bar {
+  height: 6px;
+  margin: 20px 0 8px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--velox-border);
+}
+.update-gate-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: var(--velox-accent);
+  transition: width .25s ease;
+}
+.update-gate-pct { font-size: 12px; color: var(--velox-text-dim); font-variant-numeric: tabular-nums; }
+.update-gate .primary-btn,
+.update-gate .ghost-btn { margin-top: 18px; width: 100%; justify-content: center; }
+.update-gate-note { margin-top: 14px !important; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .update-gate-fill { transition: none; } }
+
+/* Speed limit picker: same control as the proxy scope, sized for short values. */
+.speed-select { flex: 0 0 auto; min-width: 9.5rem; }
+
+/* ---- "you copied a link" offer ------------------------------------------
+   Sits above the downloads list, offering rather than acting. */
+.clip-offer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--velox-text);
+  background: var(--velox-bg-card);
+  border: 1px solid var(--velox-accent);
+}
+.clip-icon { display: flex; color: var(--velox-accent); flex: none; }
+.clip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clip-url { color: var(--velox-text-dim); }
+
+/* "All on page" sits beside the single-page download button. */
+.bv-dl-all { flex: none; white-space: nowrap; font-size: 12px; }
+
+/* Scheduled start: a time field small enough to sit in the queue toolbar. */
+.queue-schedule { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.queue-schedule input[type="time"] {
+  padding: 3px 6px;
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--velox-text);
+  background: var(--velox-bg-card);
+  border: 1px solid var(--velox-border);
+}
+.queue-schedule input[type="time"]:focus { outline: none; border-color: var(--velox-accent); }
+
+
+/* ---- Account tab + broadcast banners ---------------------------------------
+   Everything here is filled from the licence heartbeat, so a price or a message
+   changed on the server shows up without the app being restarted. */
+
+.notice-bar { display: flex; flex-direction: column; gap: 8px; }
+.notice-bar:not(:empty) { margin-bottom: 14px; }
+.notice-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--bg-card);
+  font-size: 13px;
+}
+.notice-banner.level-promo { border-left-color: #6ee7a3; background: rgba(110, 231, 163, 0.06); }
+.notice-banner.level-warn  { border-left-color: #fcd34d; background: rgba(252, 211, 77, 0.07); }
+.notice-text { flex: 1; min-width: 0; }
+.notice-b-title { display: block; color: var(--text); }
+.notice-b-body { color: var(--text-dim); }
+.notice-b-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.acct-card { padding: 18px; }
+.acct-head { display: flex; align-items: center; gap: 12px; }
+.acct-avatar {
+  width: 42px; height: 42px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-weight: 700; font-size: 17px;
+  color: #06121f; background: var(--accent);
+  flex-shrink: 0;
+}
+.acct-who { min-width: 0; }
+.acct-email { font-weight: 600; font-size: 15px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-key { font-family: 'Consolas', monospace; font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+.acct-badge {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.acct-badge.ok    { color: #6ee7a3; border-color: rgba(110, 231, 163, 0.35); background: rgba(110, 231, 163, 0.10); }
+.acct-badge.trial { color: #fcd34d; border-color: rgba(252, 211, 77, 0.35);  background: rgba(252, 211, 77, 0.10); }
+.acct-badge.warn  { color: #fcd34d; border-color: rgba(252, 211, 77, 0.35);  background: rgba(252, 211, 77, 0.10); }
+.acct-badge.bad   { color: #ff7a8a; border-color: rgba(255, 122, 138, 0.35); background: rgba(255, 122, 138, 0.10); }
+
+.acct-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+.acct-stat { background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.acct-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); }
+.acct-stat-value { font-size: 18px; font-weight: 600; color: var(--text); margin-top: 4px; }
+.acct-stat-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+.acct-included { margin-top: 18px; }
+.acct-sub-head { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); margin-bottom: 8px; }
+.acct-features { margin: 0; padding-left: 18px; color: var(--text-dim); font-size: 13px; }
+.acct-features li { margin: 3px 0; }
+
+.acct-plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.acct-empty { color: var(--text-faint); font-size: 13px; padding: 16px; }
+.plan-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+.plan-card.highlight { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.plan-card.current   { border-color: #6ee7a3; }
+.plan-flag {
+  position: absolute; top: -9px; right: 14px;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: #06121f; background: var(--accent);
+}
+.plan-name { font-size: 15px; font-weight: 600; color: var(--text); }
+.plan-price { font-size: 22px; font-weight: 700; color: var(--text); }
+.plan-price .plan-period { font-size: 12px; font-weight: 500; color: var(--text-dim); }
+.plan-card .plan-features { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--text-dim); flex: 1; }
+.plan-card .plan-features li { margin: 3px 0; }
+.plan-buy:disabled { opacity: 0.6; cursor: default; }
+
+
+/* Offers on the lock screen: the only thing a locked-out customer can act on. */
+.lock-notices { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.lock-notices:empty { display: none; }
+.lock-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--bg-input);
+  font-size: 12.5px;
+  color: var(--text-dim);
+  text-align: left;
+}
+.lock-notice strong { color: var(--text); font-size: 13px; }
+.lock-notice.level-promo { border-left-color: #6ee7a3; }
+.lock-notice.level-warn  { border-left-color: #fcd34d; }
+.lock-store { width: 100%; margin-top: 12px; }
+
+.plan-devices {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+  margin-top: -4px;
 }

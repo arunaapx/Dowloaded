@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; script-src 'self'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- A strict CSP. The UI shouldn't be dialling home or loading remote scripts. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; script-src 'self'; connect-src 'self' https://api.proxyscrape.com" />
   <title>Velox Downloader</title>
   <link rel="stylesheet" href="colors_and_type.css" />
   <link rel="stylesheet" href="styles.css" />
@@ -13,7 +15,7 @@
       <div class="logo">
         <svg viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7v10l10 5 10-5V7L12 2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 10l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
-      <div class="title">Velox Downloader <span class="version">v2.1</span></div>
+      <div class="title">Velox Downloader <span class="version js-app-version">v…</span></div>
     </div>
   </div>
 
@@ -35,6 +37,22 @@
         <button class="side-btn" data-tab="search">
           <svg class="ico" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           <span>Search</span>
+        </button>
+        <button class="side-btn" data-tab="torrents">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/><polyline points="16 2 22 2 22 8"/><line x1="22" y1="2" x2="11" y2="13"/></svg>
+          <span>Torrents</span>
+        </button>
+        <button class="side-btn" data-tab="games">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2" ry="2"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/></svg>
+          <span>Games</span>
+        </button>
+        <button class="side-btn" data-tab="softwares">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span>Softwares</span>
+        </button>
+        <button class="side-btn" data-tab="account">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span>Account</span>
         </button>
       </nav>
       <div class="profile-card hidden" id="profileCard">
@@ -69,6 +87,10 @@
     </aside>
 
     <main class="main">
+    <!-- Messages broadcast from the admin panel. Filled by account.js; empty
+         (and invisible) until there is something to say. -->
+    <div id="noticeBar" class="notice-bar"></div>
+
     <!-- NEW DOWNLOAD TAB -->
     <section class="tab-pane active" data-pane="new">
       <div class="section-header">
@@ -179,7 +201,50 @@
         </div>
       </div>
 
-      <h2 class="section-title">Active Downloads</h2>
+      <!-- Offered, never automatic. A downloader that starts fetching whatever
+           happens to be on the clipboard is a downloader people uninstall. -->
+      <div class="clip-offer hidden" id="clipOffer">
+        <span class="clip-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" width="16" height="16">
+            <rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3"/>
+          </svg>
+        </span>
+        <span class="clip-text">You copied a link — <span class="clip-url" id="clipUrl"></span></span>
+        <button type="button" class="primary-btn sm" id="clipUse">Download it</button>
+        <button type="button" class="icon-btn sm" id="clipDismiss" title="Ignore">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Queued jobs used to exist only as a line of text on the Search tab,
+           so a queue of forty looked like three downloads that had stalled.
+           The counts and the queue controls live here, above the cards. -->
+      <div class="downloads-head">
+        <h2 class="section-title" id="downloadsTitle">Downloads</h2>
+        <div class="queue-tools">
+          <span class="queue-summary" id="queueSummary">Nothing downloading</span>
+          <label class="queue-limit">
+            <span>At once</span>
+            <select id="queueLimit">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="6">6</option>
+            </select>
+          </label>
+          <button type="button" id="queueHoldBtn" class="ghost-btn sm" hidden>Hold queue</button>
+          <!-- For night-time data packages: hold everything, release at a set
+               hour. Velox has to stay open, which the hint below says. -->
+          <label class="queue-schedule" id="queueScheduleWrap" hidden>
+            <span>Start at</span>
+            <input type="time" id="queueStartAt" />
+            <button type="button" id="queueScheduleClear" class="icon-btn sm" title="Cancel the schedule" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+            </button>
+          </label>
+        </div>
+      </div>
       <div id="activeGrid" class="active-grid"></div>
     </section>
 
@@ -209,10 +274,11 @@
         </button>
         <input id="bvUrl" type="text" placeholder="https://..." />
         <button id="bvDownload" class="primary-btn bv-dl">DOWNLOAD THIS PAGE</button>
+        <button id="bvDownloadAll" class="ghost-btn bv-dl-all" title="Find every video linked on this page">ALL ON PAGE</button>
       </div>
       <div id="sitesGrid" class="browser-quicklinks"></div>
       <div class="browser-frame">
-        <webview id="bv" src="https://www.youtube.com" allowpopups partition="persist:browser"></webview>
+        <webview id="bv" src="about:blank" data-home="https://www.youtube.com" allowpopups partition="persist:browser" preload="browser-inject.js"></webview>
         <div id="bvLoading" class="bv-loading hidden">Loading…</div>
       </div>
     </section>
@@ -221,13 +287,178 @@
     <section class="tab-pane" data-pane="search">
       <div class="section-header">
         <h2 class="section-title">Search</h2>
+        <div class="site-filter">
+          <!-- Only YouTube answers a playlist search, so this is hidden for
+               every other site rather than offering a mode that returns
+               nothing. -->
+          <div id="searchKindWrap" class="search-kind" hidden>
+            <button type="button" class="seg-btn active" data-kind="video">Videos</button>
+            <button type="button" class="seg-btn" data-kind="playlist">Playlists</button>
+          </div>
+          <span id="searchSiteMode" class="site-mode-badge hidden"></span>
+          <button id="searchSiteFilterBtn" class="site-picker-btn" title="Choose which site to search">
+            <span id="searchSiteFilterText">Select a site…</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+        </div>
       </div>
       <div class="search-row">
-        <input type="text" id="searchInput" placeholder="Search YouTube…" />
+        <input type="text" id="searchInput" placeholder="Pick a site first, then search…" />
         <button id="searchBtn" class="primary-btn search-btn">SEARCH</button>
       </div>
       <div id="searchStatus" class="search-status"></div>
-      <div id="searchResults" class="search-results"></div>
+      <div id="searchBulkBar" class="bulk-bar hidden">
+        <label class="bulk-all">
+          <input type="checkbox" id="bulkSelectAll" />
+          <span>Select all</span>
+        </label>
+        <span id="bulkCount" class="bulk-count">Nothing selected</span>
+        <div class="bulk-actions">
+          <button id="bulkVideoBtn" class="primary-btn sm" disabled>DOWNLOAD VIDEO</button>
+          <button id="bulkAudioBtn" class="ghost-btn sm" disabled>DOWNLOAD MP3</button>
+          <button id="bulkClearBtn" class="ghost-btn sm" disabled>Clear</button>
+        </div>
+      </div>
+      <div id="searchResults" class="search-results grid-view"></div>
+    </section>
+
+    <!-- TORRENTS TAB -->
+    <section class="tab-pane" data-pane="torrents">
+      <div style="display:flex; flex-direction:column; height: 100%;">
+        <div class="torrent-toolbar" style="display:flex; gap:10px; padding: 15px 0; border-bottom: 1px solid var(--velox-border); align-items:center;">
+        <button id="addMagnetBtn" class="primary-btn sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="margin-right: 5px;"><path d="M12 5v14M5 12h14"/></svg> Add Magnet</button>
+        <button id="addTorrentFileBtn" class="ghost-btn sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="margin-right: 5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg> Add .torrent File</button>
+        <div style="flex:1;"></div>
+        <div style="display:flex; align-items:center; gap: 8px; font-size:12px; color:var(--velox-text-dim);">
+          <span>Save path:</span>
+          <span id="savePathDisplay" style="background:var(--velox-bg-card); padding:4px 8px; border-radius:4px; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="...">Loading...</span>
+          <button id="changeSavePathBtn" class="icon-btn sm" title="Change Directory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></button>
+          <button id="openSavePathBtn" class="icon-btn sm" title="Open Folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>
+        </div>
+      </div>
+      
+      <!-- Why a torrent was refused (trial used up, licence not active). The
+           torrents tab has no other place to say anything, so failures here
+           used to vanish. -->
+      <div id="torrentNotice" class="torrent-notice" hidden></div>
+
+      <!-- Table Container -->
+      <div class="torrent-table-container" style="flex: 1; overflow: auto; margin-top: 10px;">
+        <table class="velox-table" id="torrentTable">
+          <thead>
+            <tr>
+              <th style="min-width: 250px;">Name</th>
+              <th style="width: 80px;">Size</th>
+              <th style="min-width: 150px;">Progress</th>
+              <th style="width: 100px;">Status</th>
+              <th style="width: 90px;">Down</th>
+              <th style="width: 90px;">Up</th>
+              <th style="width: 80px;">ETA</th>
+              <th style="width: 60px;">Peers</th>
+              <th style="width: 120px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="torrentTableBody">
+            <!-- Rows injected by JS -->
+          </tbody>
+        </table>
+      </div>
+      </div>
+    </section>
+
+    <!-- ACCOUNT TAB -->
+    <section class="tab-pane" data-pane="account">
+      <div class="section-header">
+        <h2 class="section-title">Account</h2>
+        <button id="accountRefreshBtn" class="ghost-btn sm" type="button">Refresh</button>
+      </div>
+
+      <div class="card acct-card">
+        <div class="acct-head">
+          <div class="acct-avatar" id="acctAvatar">U</div>
+          <div class="acct-who">
+            <div class="acct-email" id="acctEmail">—</div>
+            <div class="acct-key" id="acctKey"></div>
+          </div>
+          <span class="acct-badge" id="acctStatus">—</span>
+        </div>
+
+        <div class="acct-stats">
+          <div class="acct-stat">
+            <div class="acct-stat-label">Plan</div>
+            <div class="acct-stat-value" id="acctPlan">—</div>
+          </div>
+          <div class="acct-stat">
+            <div class="acct-stat-label">Valid until</div>
+            <div class="acct-stat-value" id="acctValid">—</div>
+            <div class="acct-stat-sub" id="acctValidSub"></div>
+          </div>
+          <div class="acct-stat">
+            <div class="acct-stat-label">Downloads today</div>
+            <div class="acct-stat-value" id="acctToday">0</div>
+          </div>
+          <div class="acct-stat">
+            <div class="acct-stat-label">Devices</div>
+            <div class="acct-stat-value" id="acctDevices">—</div>
+            <div class="acct-stat-sub" id="acctDevicesSub"></div>
+          </div>
+          <div class="acct-stat" id="acctTrialStat" hidden>
+            <div class="acct-stat-label">Free downloads left</div>
+            <div class="acct-stat-value" id="acctTrial">—</div>
+          </div>
+        </div>
+
+        <div class="acct-included" id="acctIncluded" hidden>
+          <div class="acct-sub-head">What your subscription includes</div>
+          <ul id="acctFeatures" class="acct-features"></ul>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <h2 class="section-title">Plans</h2>
+        <button id="acctUpgrade" class="ghost-btn sm" type="button">Open store</button>
+      </div>
+      <div id="acctPlans" class="acct-plans"></div>
+    </section>
+
+    <!-- GAMES TAB -->
+    <section class="tab-pane" data-pane="games">
+      <div class="section-header" style="display: flex; flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2 class="section-title" style="margin: 0;">Games (Velox Database)</h2>
+          <button id="refreshGamesBtn" class="ghost-btn">Refresh Latest</button>
+        </div>
+        <div class="search-row" style="margin: 0;">
+          <input type="text" id="gamesSearchInput" placeholder="Search latest cracked games (FitGirl + DODI)..." />
+        </div>
+      </div>
+      <div id="gamesStatus" class="search-status" style="display: none; align-items: center; justify-content: center; gap: 15px; margin: 40px 0;">
+        <div class="loader-bar" style="width: 150px; background: var(--velox-border); height: 4px; border-radius: 2px; overflow: hidden; position: relative;">
+          <div style="position: absolute; top: 0; left: 0; height: 100%; background: var(--velox-accent); width: 30%; animation: slide 1s infinite linear;"></div>
+        </div>
+        <span id="gamesStatusText">Fetching latest games...</span>
+      </div>
+      <div id="gamesResults" class="search-results" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px;"></div>
+    </section>
+
+    <!-- SOFTWARES TAB -->
+    <section class="tab-pane" data-pane="softwares">
+      <div class="section-header" style="display: flex; flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2 class="section-title" style="margin: 0;">Softwares (Pro Apps)</h2>
+          <button id="refreshSoftwaresBtn" class="ghost-btn">Refresh Catalog</button>
+        </div>
+        <div class="search-row" style="margin: 0;">
+          <input type="text" id="softwaresSearchInput" placeholder="Search Adobe, Autodesk, IDM, Windows Activators..." />
+        </div>
+      </div>
+      <div id="softwaresStatus" class="search-status" style="display: none; align-items: center; justify-content: center; gap: 15px; margin: 40px 0;">
+        <div class="loader-bar" style="width: 150px; background: var(--velox-border); height: 4px; border-radius: 2px; overflow: hidden; position: relative;">
+          <div style="position: absolute; top: 0; left: 0; height: 100%; background: var(--velox-accent); width: 30%; animation: slide 1s infinite linear;"></div>
+        </div>
+        <span id="softwaresStatusText">Fetching cracked software...</span>
+      </div>
+      <div id="softwaresResults" class="search-results" style="display: flex; flex-direction: column; gap: 10px;"></div>
     </section>
 
     <!-- SETTINGS TAB -->
@@ -262,6 +493,101 @@
             <div class="setting-hint" id="settingsLicenseExpiry"></div>
           </div>
         </div>
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-name">Sort into folders</div>
+            <div class="setting-hint">Save videos into <strong>Video</strong> and music into <strong>Music</strong> instead of one folder. Playlists keep their own folder inside.</div>
+          </div>
+          <label class="switch small"><input type="checkbox" id="sortIntoFolders" /><span class="slider"></span></label>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-name">Download speed limit</div>
+            <div class="setting-hint" id="speedLimitHint">Downloading at full speed can make the rest of your internet slow.</div>
+          </div>
+          <select id="speedLimit" class="proxy-select speed-select">
+            <option value="0">No limit</option>
+            <option value="131072">128 KB/s</option>
+            <option value="262144">256 KB/s</option>
+            <option value="524288">512 KB/s</option>
+            <option value="1048576">1 MB/s</option>
+            <option value="2097152">2 MB/s</option>
+            <option value="5242880">5 MB/s</option>
+            <option value="10485760">10 MB/s</option>
+          </select>
+        </div>
+
+        <!-- Some videos are refused unless the request is signed in. Off by
+             default because signed-in cookies break other videos that work
+             anonymously; see the cookie filter in main.js. -->
+        <div class="setting-row setting-row-stack">
+          <div class="setting-label">
+            <div class="setting-name">Use my YouTube sign-in</div>
+            <div class="setting-hint" id="ytSignInHint">
+              Some videos are only served to a signed-in account. Sign in on
+              YouTube in the Browser tab, then turn this on.
+            </div>
+          </div>
+          <label class="switch small"><input type="checkbox" id="ytSignInToggle" /><span class="slider"></span></label>
+        </div>
+
+        <div class="setting-row setting-row-stack">
+          <div class="setting-label" style="width: 100%">
+            <div class="setting-name">Netflix Account</div>
+            <div class="setting-hint">
+              Enter your Netflix credentials and paste your <code>cookies.txt</code> contents (from "Get cookies.txt LOCALLY" extension).
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+               <input type="email" id="netflixEmail" placeholder="Netflix Email" class="proxy-input" style="flex: 1" />
+               <input type="password" id="netflixPassword" placeholder="Netflix Password" class="proxy-input" style="flex: 1" />
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+              <input type="text" id="netflixProxy" placeholder="Proxy (e.g. http://1.2.3.4:8080) — needed for region-locked titles" class="proxy-input" style="flex: 1;" />
+              <button class="btn btn-secondary" id="fetchProxyBtn" style="white-space: nowrap;">Auto-Fetch Proxy</button>
+            </div>
+            <textarea id="netflixCookies" class="proxy-input" placeholder="Paste your Netflix cookies.txt content here..." style="width: 100%; height: 80px; margin-top: 8px; resize: vertical;"></textarea>
+            <div style="margin-top: 8px;">
+               <button class="btn" id="saveNetflixBtn">Save Netflix Settings</button>
+            </div>
+            <div class="setting-hint" id="netflixStatus" style="margin-top:4px; color: var(--green);"></div>
+          </div>
+        </div>
+
+        <!-- Proxy. Deliberately NOT called a VPN: torrent peer traffic does
+             not pass through it, so the hint says so instead of letting the
+             name imply protection it cannot give. -->
+        <div class="setting-row setting-row-stack">
+          <div class="setting-label">
+            <div class="setting-name">Proxy</div>
+            <div class="setting-hint">
+              Sends downloads out through another IP, for when YouTube has
+              flagged your connection. Free public proxies are shared by
+              thousands of people and get flagged themselves, so treat one as a
+              stopgap. <strong>Torrents do not use it</strong> — they always
+              connect directly.
+            </div>
+          </div>
+          <div class="proxy-controls">
+            <div class="proxy-line">
+              <input type="text" id="proxyUrl" class="proxy-input" spellcheck="false"
+                     placeholder="socks5://127.0.0.1:1080" />
+              <label class="switch small" title="Use this proxy">
+                <input type="checkbox" id="proxyEnabled" /><span class="slider"></span>
+              </label>
+            </div>
+            <div class="proxy-line">
+              <select id="proxyScope" class="proxy-select">
+                <option value="fallback">Only when YouTube blocks you (recommended)</option>
+                <option value="youtube">Every YouTube download</option>
+                <option value="all">Every site</option>
+              </select>
+              <button type="button" id="proxyTestBtn" class="ghost-btn">Test</button>
+            </div>
+            <div class="proxy-status" id="proxyStatus"></div>
+          </div>
+        </div>
+
         <!-- One plain row instead of three engine paths. Users do not need to
              know which tools do the work, and the old rows also printed the
              developer's own folder paths on every customer's screen. -->
@@ -283,17 +609,24 @@
     </main>
   </div>
 
-  <div class="statusbar">
-    <span class="status-dot" id="statusDot" data-state="ok"></span>
-    <span class="status-text" id="statusText">Ready</span>
-    <span class="status-sep"></span>
-    <span class="status-metric"><span class="status-metric-label">Active</span><span id="statActive">0</span></span>
-    <span class="status-sep"></span>
-    <span class="status-metric"><span class="status-metric-label">Speed</span><span id="statSpeed">—</span></span>
-    <span class="status-sep"></span>
-    <span class="status-metric"><span class="status-metric-label">License</span><span id="statLicense">—</span></span>
-    <span class="spacer"></span>
-    <span class="status-version">v2.1</span>
+  <div class="statusbar" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <span class="status-dot" id="statusDot" data-state="ok"></span>
+      <span class="status-text" id="statusText">Ready</span>
+      <span class="status-sep"></span>
+      <span class="status-metric"><span class="status-metric-label">Active</span><span id="statActive">0</span></span>
+      <span class="status-sep"></span>
+      <span class="status-metric"><span class="status-metric-label">Speed</span><span id="statSpeed">—</span></span>
+      <span class="status-sep"></span>
+      <span class="status-metric"><span class="status-metric-label">License</span><span id="statLicense">3 days left</span></span>
+    </div>
+    <div style="display: flex; gap: 15px; align-items: center; padding-right: 15px;">
+      <span id="veloxServerStatus" style="font-family: monospace; font-size: 11px; opacity: 0.9;">
+        <span style="color: #00ffaa; text-shadow: 0 0 5px #00ffaa;">●</span> VELOX CLOUD: CONNECTED (us-east-1)
+      </span>
+      <button type="button" id="updatePill" class="update-pill hidden" title="A new version is available"></button>
+      <span class="status-version js-app-version">v…</span>
+    </div>
   </div>
 
   <!-- SUPPORTED SITES MODAL -->
@@ -314,7 +647,33 @@
   </div>
 
   <!-- LICENSE LOCK SCREEN -->
-  <div class="lock-screen hidden" id="lockScreen">
+  <!-- Starts visible. The licence check is a ~950ms network round trip;
+       rendering the app behind this instead of after it is what stopped
+       start-up waiting on the network, and starting locked means no
+       unlocked frame is ever shown. -->
+  <!-- Mandatory update. Shown only once an update is CONFIRMED available, so
+       a machine that is offline, or that cannot reach the update server, is
+       never locked out of an app it already paid for. -->
+  <div class="update-gate hidden" id="updateGate" role="dialog" aria-modal="true" aria-labelledby="updateGateTitle">
+    <div class="update-gate-card">
+      <div class="update-gate-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" width="30" height="30">
+          <path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M4 20h16"/>
+        </svg>
+      </div>
+      <h2 id="updateGateTitle">A new version is required</h2>
+      <p id="updateGateBody">Velox is updating itself. This only takes a moment.</p>
+
+      <div class="update-gate-bar"><div class="update-gate-fill" id="updateGateFill"></div></div>
+      <div class="update-gate-pct" id="updateGatePct">Starting…</div>
+
+      <button type="button" id="updateGateBtn" class="primary-btn" hidden>Restart and finish</button>
+      <button type="button" id="updateGateRetry" class="ghost-btn" hidden>Try again</button>
+      <p class="update-gate-note" id="updateGateNote"></p>
+    </div>
+  </div>
+
+  <div class="lock-screen" id="lockScreen">
     <div class="lock-card">
       <div class="lock-logo">V</div>
       <h1 class="lock-title">Activate Velox Downloader</h1>
@@ -341,6 +700,12 @@
         <div class="lock-msg" id="lkKeyMsg"></div>
       </div>
 
+      <!-- A locked-out app is exactly who needs an offer, and it can still get
+           one: the refusal an expired licence gets carries the notices with it. -->
+      <div id="lockNotices" class="lock-notices"></div>
+
+      <button class="ghost-btn lock-store" id="lkStoreBtn" type="button">See plans &amp; pricing</button>
+
       <div class="lock-foot">By activating you agree to use Velox only for content you have rights to download.</div>
     </div>
   </div>
@@ -358,13 +723,121 @@
           <div class="about-role">Civil Engineering Undergraduate Student · University of Peradeniya</div>
           <div class="about-company">The Hard Worker Corporation</div>
           <div class="about-meta">
-            <span>Velox Downloader <span class="mono">v2.1</span></span>
+            <span>Velox Downloader <span class="mono js-app-version">v…</span></span>
           </div>
         </div>
       </div>
     </div>
   </div>
 
+  <!-- AUDIO NOTIFICATION -->
+  <audio id="notificationSound" src="assets/notification.mp3" preload="auto"></audio>
+
+  <!-- GAME INFO MODAL -->
+  <div id="gameInfoModal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+    <div style="background: var(--velox-bg-app); border-radius: var(--velox-r-lg); width: 450px; max-width: 90%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: var(--velox-shadow-menu);">
+      <div style="padding: 16px; border-bottom: 1px solid var(--velox-border); display: flex; justify-content: space-between; align-items: center;">
+        <h3 id="gameInfoTitle" style="margin: 0; font-size: 16px; color: var(--velox-text);">Game Information</h3>
+        <button id="closeGameInfoBtn" style="background: transparent; border: none; color: var(--velox-text-dim); font-size: 20px; cursor: pointer;">&times;</button>
+      </div>
+      <div style="padding: 16px; overflow-y: auto;">
+        <pre id="gameInfoContent" style="margin: 0; white-space: pre-wrap; font-family: inherit; font-size: 13px; color: var(--velox-text-dim); line-height: 1.5;">Loading...</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEARCH RESULT PREVIEW -->
+  <!-- Direct child of <body>, like the other modals: anything nested inside a
+       display:none container can never be shown. -->
+  <div id="previewModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
+    <div class="modal preview-modal">
+      <button id="previewClose" class="modal-close" type="button" aria-label="Close preview">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+      <div class="modal-header">
+        <h3 class="modal-title" id="previewTitle">Preview</h3>
+        <span class="modal-sub" id="previewSite"></span>
+      </div>
+      <div class="preview-stage" id="previewStage"></div>
+      <div class="preview-actions">
+        <button id="previewVideoBtn" class="primary-btn sm">DOWNLOAD VIDEO</button>
+        <button id="previewAudioBtn" class="ghost-btn sm">DOWNLOAD MP3</button>
+        <button id="previewOpenBtn" class="ghost-btn sm">Open in browser tab</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEARCH SITE PICKER -->
+  <!-- Must stay a direct child of <body>: it used to sit inside
+       #gameInfoModal, whose display:none meant it could never be seen. -->
+  <!-- Playlist picker. Must stay a direct child of <body> for the same reason
+       the site picker does: nested inside a hidden container it could never be
+       seen. -->
+  <div id="playlistModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="playlistTitle">
+    <div class="modal modal-wide playlist-modal">
+      <button id="playlistClose" class="modal-close" type="button" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+      <div class="modal-header">
+        <h3 class="modal-title" id="playlistTitle">Playlist</h3>
+        <span id="playlistSub" class="modal-sub"></span>
+      </div>
+
+      <div class="playlist-tools">
+        <label class="playlist-all"><input type="checkbox" id="playlistAll" checked /> <span>Select all</span></label>
+        <div class="playlist-range">
+          <span>From</span>
+          <input type="number" id="playlistFrom" min="1" value="1" />
+          <span>to</span>
+          <input type="number" id="playlistTo" min="1" />
+          <button type="button" id="playlistApplyRange" class="ghost-btn sm">Apply</button>
+        </div>
+        <label class="playlist-folder">
+          <input type="checkbox" id="playlistFolder" checked />
+          <span>Own folder, numbered in playlist order</span>
+        </label>
+      </div>
+
+      <div class="modal-body playlist-list" id="playlistList"></div>
+
+      <div class="playlist-actions">
+        <span class="playlist-picked" id="playlistPicked"></span>
+        <button type="button" id="playlistCancel" class="ghost-btn">Cancel</button>
+        <button type="button" id="playlistVideo" class="primary-btn">Download video</button>
+        <button type="button" id="playlistAudio" class="ghost-btn">Download MP3</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="supportedSitesModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="supportedSitesTitle">
+    <div class="modal modal-wide site-picker-modal">
+      <button id="supportedSitesClose" class="modal-close" type="button" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+      <div class="modal-header">
+        <h3 class="modal-title" id="supportedSitesTitle">Choose a site to search</h3>
+        <span id="supportedSitesCount" class="modal-sub">Loading…</span>
+      </div>
+      <div class="site-picker-body">
+        <input type="text" id="supportedSitesSearch" class="site-picker-search" placeholder="Filter sites by name…" />
+        <div id="supportedSitesCats" class="site-picker-cats"></div>
+        <div class="site-picker-legend">
+          <span><i class="dot dot-direct"></i> Direct results in Velox</span>
+          <span><i class="dot dot-browser"></i> Opens in the browser tab</span>
+          <span><i class="dot dot-link"></i> Paste a link</span>
+          <label class="site-picker-nsfw"><input type="checkbox" id="supportedSitesNsfw" /> Show adult sites</label>
+        </div>
+        <div id="supportedSitesList" class="site-picker-list">
+          <!-- Site items go here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
+  <!-- after app.js: it calls queueDownload and reads state -->
+  <script src="playlist.js"></script>
+  <script src="premium-features.js"></script>
+  <script src="account.js"></script>
 </body>
 </html>

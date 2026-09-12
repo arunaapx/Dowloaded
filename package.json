@@ -1,20 +1,25 @@
 {
   "name": "velox-downloader",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "description": "Velox Downloader — licensed desktop app for YouTube, Facebook, TikTok, Instagram, and 1000+ sites. Server-gated extraction, device-side download.",
   "main": "main.js",
   "scripts": {
     "start": "node start.js",
     "build": "electron-builder --win",
-    "web": "node web/server.js"
+    "web": "node web/server.js",
+    "release": "node scripts/release.js",
+    "engine:build": "node scripts/build-engine.js",
+    "engine:smoke": "node engine/smoke.js",
+    "engine:bench": "node engine/bench.js",
+    "prebuild": "node scripts/build-engine.js && node scripts/brand-engine.js",
+    "engine:brand": "node scripts/brand-engine.js"
   },
   "keywords": [
     "video",
     "downloader",
     "youtube",
     "facebook",
-    "tiktok",
-    "yt-dlp"
+    "tiktok"
   ],
   "author": {
     "name": "H A P Sarathchandra",
@@ -29,16 +34,35 @@
   "build": {
     "appId": "com.prolanka.veloxdownloader",
     "productName": "Velox Downloader",
+    "npmRebuild": false,
     "files": [
       "main.js",
       "preload.js",
       "core/**/*",
-      "renderer/**/*"
+      "renderer/**/*",
+      {
+        "from": "node_modules/request-promise-core",
+        "to": "node_modules/request-promise-core",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "node_modules/koffi",
+        "to": "node_modules/koffi",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "extraResources": [
       {
-        "from": "bin/yt-dlp.exe",
-        "to": "bin/yt-dlp.exe"
+        "from": "bin/velox-core.exe",
+        "to": "bin/velox-core.exe"
+      },
+      {
+        "from": "bin/_internal",
+        "to": "bin/_internal"
       },
       {
         "from": "bin/ffmpeg.exe",
@@ -47,13 +71,31 @@
       {
         "from": "bin/ffprobe.exe",
         "to": "bin/ffprobe.exe"
+      },
+      {
+        "from": "bin/qjs.exe",
+        "to": "bin/qjs.exe"
+      },
+      {
+        "from": "bin/velox_engine.dll",
+        "to": "bin/velox_engine.dll"
       }
     ],
     "win": {
       "icon": "build/icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
@@ -73,6 +115,22 @@
     },
     "portable": {
       "artifactName": "VeloxDownloader-Portable-${version}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://veloxdownloader.prolanka.online/updates/",
+        "channel": "latest"
+      }
+    ]
+  },
+  "dependencies": {
+    "axios": "^1.20.0",
+    "cheerio": "^1.2.0",
+    "electron-updater": "^6.8.9",
+    "koffi": "^3.2.1",
+    "request-promise-core": "1.1.4",
+    "torrent-search-api": "^2.1.4",
+    "webtorrent": "^3.0.21"
   }
 }
