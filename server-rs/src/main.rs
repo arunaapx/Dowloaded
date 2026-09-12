@@ -35,6 +35,12 @@ use velox_license::{
 /// nobody could safely cut over, or roll back.
 struct Config {
     port: u16,
+    /// Which interface to listen on. Localhost by default: nginx proxies from
+    /// there, and the licence server has no business being reachable on its own
+    /// port from the internet - which is exactly what it is when the firewall is
+    /// off. Set BIND_ADDR=0.0.0.0 deliberately if something on another host has
+    /// to reach it.
+    bind: String,
     data_dir: PathBuf,
     admin_user: String,
     admin_pass: String,
@@ -78,6 +84,7 @@ impl Config {
 
         Self {
             port: env_number("PORT", 4011),
+            bind: env_string("BIND_ADDR", "127.0.0.1"),
             data_dir: std::env::var("DATA_DIR").map(PathBuf::from).unwrap_or_else(|_| node_server.join("data")),
             admin_user: env_string("ADMIN_USER", "admin"),
             admin_pass: env_string("ADMIN_PASS", ""),
@@ -156,7 +163,9 @@ async fn main() {
         started: Instant::now(),
     });
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
+    let addr: SocketAddr = format!("{}:{}", config.bind, config.port)
+        .parse()
+        .unwrap_or_else(|_| panic!("BIND_ADDR is not an address: {}", config.bind));
     let listener = tokio::net::TcpListener::bind(addr).await.expect("cannot bind");
     tracing::info!("velox-license (rust) listening on http://{addr}");
     tracing::info!("admin user: {}", config.admin_user);

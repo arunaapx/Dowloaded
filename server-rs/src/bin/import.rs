@@ -64,6 +64,18 @@ fn main() {
     println!("  plans {} · notices {} · settings {} · usage {} · events {}",
         after.plans, after.notices, after.settings, after.usage, after.events);
 
+    // An event has no id of its own in the JSON file, so two byte-identical
+    // entries logged in the same millisecond - a burst of rate-limited requests
+    // from one address - collapse into one row. Said out loud here, because a
+    // number that does not match the file should never be left to look like
+    // something went missing.
+    let collapsed = imported.events as i64 - after.events;
+    if collapsed > 0 {
+        println!(
+            "  ({collapsed} of those were identical entries logged in the same millisecond, kept once)"
+        );
+    }
+
     // The check that matters: every key in the file is in the ledger. Events
     // are excluded — they are appended, not keyed, so a second run adds more.
     if after.keys < imported.keys as i64 {
