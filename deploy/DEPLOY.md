@@ -202,3 +202,54 @@ every new version trips Windows SmartScreen for the user. An OV/EV certificate i
 - **Updates:** `git pull && cd server && npm install --omit=dev && pm2 restart velox-license`.
 - A crashed process auto-restarts (PM2). A changed server-side check breaks any
   cracked client — that's the self-healing property.
+
+## 9. The Rust licence server, and going back
+
+The licence server is Rust (`server-rs/`) as of the cutover. nginx proxies
+`downloader.prolanka.online` to `127.0.0.1:4010`, and whichever server holds that
+port is the licence server — so swapping them is a pm2 swap, not a config change:
+
+```bash
+sudo bash /opt/velox/deploy/cutover-to-rust.sh    # Node -> Rust
+sudo bash /opt/velox/deploy/rollback-to-node.sh   # Rust -> Node, keeping today's sales
+```
+
+Both scripts check the result and put the other server back if anything failed.
+The ledger lives in two shapes: `server/data/licenses.json` is what Node reads,
+`server/data/licenses.db` is what Rust reads, and the two tools that move between
+them are `import` and `export` in `server-rs/target/release/`. The rollback runs
+`export` first, so keys sold and machines bound while Rust was serving come back
+with it.
+
+After a code change:
+
+```bash
+cd /opt/velox && git pull
+cd server-rs && cargo build --release      # ~30s incremental, 2-3 min cold
+pm2 restart velox-license-rs
+curl -s https://downloader.prolanka.online/healthz
+```
+
+### What the checks are for
+
+| command | what it proves |
+|---|---|
+| `cargo test` (in `server-rs/`) | the rules, the admin API, the gates — no network |
+| `node server-rs/test/parity.js` | the Node server's own suites pass against Rust |
+| `node server-rs/test/shadow.js` | both servers answer a 105-step scenario identically |
+| `node server-rs/test/live-rehearsal.js` | on the VPS: the same answers on the real ledger |
+| `node server-rs/test/panel-http.js` | the admin panel opens, and only with a session |
+
+### The firewall, ssh and the panel password
+
+- `ufw` is on: 22, 80, 443, and the ports other projects on this box were already
+  serving on (3001-3003, 4000, 4100). Anything new is closed by default. Closing
+  those five is the other projects' call — `sudo ufw delete allow 3001/tcp`.
+- `fail2ban` watches ssh: five failures in ten minutes, banned for an hour. The
+  owner's ISP range is in `ignoreip` so a mistyped password cannot lock them out
+  (`/etc/fail2ban/jail.local`).
+- ssh takes keys only (`/etc/ssh/sshd_config.d/00-velox-hardening.conf`). Delete
+  that file and restart ssh to undo it.
+- `server/.env` and the ledger are 600, and the licence server no longer listens
+  on a public interface: `BIND_ADDR=127.0.0.1`, so the only way in is through
+  nginx and its TLS.
