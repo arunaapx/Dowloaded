@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!isSpecial) {
       const cat = document.createElement('span');
       cat.className = 'cat';
-      cat.textContent = site.cat === 'other' ? 'yt-dlp' : categoryName(site.cat).split(' ')[0];
+      cat.textContent = site.cat === 'other' ? 'Velox' : categoryName(site.cat).split(' ')[0];
       btn.appendChild(cat);
       btn.title = `${site.name}${site.domain ? ' · ' + site.domain : ''} — ${MODE_LABEL[site.mode] || ''}`;
     }
@@ -768,7 +768,7 @@ document.addEventListener('DOMContentLoaded', () => {
     div.innerHTML = `
       <h4>${escapeHtmlPF(site.name)} has no search Velox can read directly</h4>
       <p>${isLink
-        ? `yt-dlp can download from ${escapeHtmlPF(site.name)}, but the site exposes no search page. Find the video yourself, then paste its link into the URL box.`
+        ? `Velox can download from ${escapeHtmlPF(site.name)}, but the site exposes no search page. Find the video yourself, then paste its link into the URL box.`
         : `Velox will open the ${escapeHtmlPF(site.name)} search for "${escapeHtmlPF(query)}" in the browser tab. Open a video there and press DOWNLOAD THIS PAGE.`}</p>
       <div class="row">
         <button class="primary-btn sm go-browse">${isLink ? 'OPEN SITE' : 'OPEN SEARCH IN BROWSER'}</button>

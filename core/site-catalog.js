@@ -30,7 +30,7 @@ const CATEGORIES = [
   { id: 'asia', name: 'Asian platforms' },
   { id: 'cloud', name: 'Cloud & creators' },
   { id: 'adult', name: 'Adult' },
-  { id: 'other', name: 'Other yt-dlp sites' },
+  { id: 'other', name: 'Other Velox sites' },
 ];
 
 const SITES = [
