@@ -21,6 +21,18 @@ pub struct Claims {
     #[serde(default)]
     pub email: Option<String>,
     pub exp: i64,
+    /// Issued at, in seconds, as the standard has it.
+    #[serde(default)]
+    pub iat: i64,
+    /// This token, and no other one.
+    ///
+    /// It is here because a token is re-issued on every heartbeat to keep a
+    /// leaked one short-lived, and without something unique in it two tokens
+    /// minted for the same machine in the same second are byte for byte
+    /// identical - so the rotation quietly did nothing for a whole second at a
+    /// time. A JWT id is what that claim is for.
+    #[serde(default)]
+    pub jti: Option<String>,
 }
 
 /// An admin session. Nothing about a licence: it says only that whoever holds
@@ -73,12 +85,14 @@ impl Tokens {
     }
 
     pub fn issue(&self, key: &str, device_id: &str, email: Option<&str>) -> Option<String> {
-        let exp = crate::model::now_ms() / 1000 + self.ttl_hours * 3600;
+        let now = crate::model::now_ms() / 1000;
         let claims = Claims {
             key: key.to_string(),
             device_id: device_id.to_string(),
             email: email.map(str::to_string),
-            exp,
+            exp: now + self.ttl_hours * 3600,
+            iat: now,
+            jti: Some(unique_id()),
         };
         encode(&Header::new(Algorithm::HS256), &claims, &self.encoding).ok()
     }
@@ -114,6 +128,15 @@ impl Tokens {
         let claims = decode::<AdminClaims>(token, &self.decoding, &rules).ok()?.claims;
         (claims.role == "admin").then_some(claims)
     }
+}
+
+/// Sixteen hex characters of randomness: enough that two tokens never collide,
+/// short enough not to bloat a header sent on every request.
+fn unique_id() -> String {
+    use rand::Rng;
+    let mut bytes = [0u8; 8];
+    rand::thread_rng().fill(&mut bytes[..]);
+    hex::encode(bytes)
 }
 
 fn base64_url(bytes: &[u8]) -> String {

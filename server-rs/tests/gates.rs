@@ -137,6 +137,8 @@ fn an_expired_token_is_expired_whatever_the_key_says() {
             device_id: "DEV-P".into(),
             email: None,
             exp: velox_license::model::now_ms() / 1000 - 7 * 24 * 3600,
+            iat: velox_license::model::now_ms() / 1000 - 8 * 24 * 3600,
+            jti: None,
         },
         &jsonwebtoken::EncodingKey::from_secret(b"test-secret-for-the-gates"),
     )
@@ -153,6 +155,27 @@ fn a_token_is_never_issued_with_a_nonsense_lifetime() {
     let t = misconfigured.issue("VLX-PAID-00000-00000", "DEV-P", None).unwrap();
     assert!(misconfigured.verify(&t).is_some(), "the floor of one hour holds");
     assert!(misconfigured.ttl_seconds() >= 3600);
+}
+
+#[test]
+fn every_token_is_a_different_token() {
+    let state = server(100, 6);
+    // The heartbeat re-issues one on every beat so that a leaked token is
+    // superseded within one interval. Two tokens minted in the same second used
+    // to be identical strings, which made that rotation a no-op for a second at
+    // a time - and the beats of a quiet app can land in the same second.
+    let first = token(&state, "VLX-PAID-00000-00000", "DEV-P");
+    let second = token(&state, "VLX-PAID-00000-00000", "DEV-P");
+    assert_ne!(first, second, "issued back to back, and still different");
+    // Both are real tokens for the same licence.
+    for t in [&first, &second] {
+        let claims = state.tokens.verify(t).expect("a token that verifies");
+        assert_eq!(claims.key, "VLX-PAID-00000-00000");
+        assert_eq!(claims.device_id, "DEV-P");
+    }
+    // And the old one still works until it expires: rotation supersedes, it does
+    // not revoke. An app mid-request when the beat lands must not be cut off.
+    assert!(gate::require_licence(&state, Some(&format!("Bearer {first}")), None).is_ok());
 }
 
 #[test]
