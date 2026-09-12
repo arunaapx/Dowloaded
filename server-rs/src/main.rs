@@ -24,6 +24,7 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 use tower_http::services::ServeDir;
+use velox_license::db::Db;
 
 // ------------------------------------------------------------------ config
 
@@ -82,6 +83,10 @@ impl Config {
 struct AppState {
     config: Config,
     started: Instant,
+    /// The ledger. Opened once at start-up so a failure to open it stops the
+    /// process rather than surfacing as a broken request an hour later.
+    #[allow(dead_code)]
+    db: Db,
 }
 
 type Shared = Arc<AppState>;
@@ -149,7 +154,14 @@ async fn main() {
         "configuration loaded"
     );
 
-    let state: Shared = Arc::new(AppState { config, started: Instant::now() });
+    let db_path = config.data_dir.join("licenses.db");
+    let db = Db::open(&db_path).expect("cannot open the licence database");
+    match db.counts() {
+        Ok(c) => tracing::info!(db = %db_path.display(), keys = c.keys, devices = c.devices, plans = c.plans, notices = c.notices, "ledger opened"),
+        Err(e) => tracing::warn!("ledger opened but could not be counted: {e}"),
+    }
+
+    let state: Shared = Arc::new(AppState { config, started: Instant::now(), db });
     let app = router(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
