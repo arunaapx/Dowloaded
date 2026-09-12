@@ -112,8 +112,9 @@ fn a_machine_already_on_the_key_is_not_a_new_machine() {
 #[test]
 fn a_bigger_allowance_says_where_you_stand() {
     let db = ledger();
-    let row = key(&db, "VLX-PAID-00000-00000");
     for id in ["PC-1", "PC-2", "PC-3"] {
+        // Re-read each time: binding changes the row, and the count has to come
+        // from the ledger rather than from a copy taken before.
         let row = key(&db, "VLX-PAID-00000-00000");
         model::bind_device(&db, &row, id, id);
     }
@@ -123,7 +124,6 @@ fn a_bigger_allowance_says_where_you_stand() {
     assert_eq!(fourth.used, 3);
     assert_eq!(fourth.limit, 3);
     assert!(model::device_limit_message(&fourth).contains("3 of 3 devices"));
-    let _ = row;
 }
 
 #[test]

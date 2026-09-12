@@ -4,6 +4,8 @@
 
 pub mod auth;
 pub mod db;
+pub mod extract;
+pub mod gate;
 pub mod importer;
 pub mod model;
 pub mod routes;

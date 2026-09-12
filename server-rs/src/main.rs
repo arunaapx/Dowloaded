@@ -7,11 +7,12 @@
 //!   cd server && npm test                                   # the Node one
 //!   VELOX_TEST_BASE=http://127.0.0.1:4011 npm test           # this one
 //!
-//! Here now: configuration, the ledger, the admin panel's static files, and the
+//! Here now: configuration, the ledger, the admin panel's static files, the
 //! three calls the desktop app makes — sign-up, activation and the heartbeat —
-//! plus the public pricing the website reads. The gated extraction routes and
-//! the admin API are the phases after this; anything not yet ported answers 501
-//! saying exactly that, rather than pretending to be a licence server.
+//! the public pricing the website reads, and the gated extraction routes the app
+//! cannot work without. The admin API is the phase after this; anything not yet
+//! ported answers 501 saying exactly that, rather than pretending to be a
+//! licence server.
 
 use axum::{http::StatusCode, response::IntoResponse, routing::get, Json, Router};
 use serde_json::json;
@@ -20,6 +21,8 @@ use tower_http::services::ServeDir;
 use velox_license::{
     auth::Tokens,
     db::Db,
+    extract::Extractor,
+    gate::DailyUsage,
     routes::{self, AppState, Shared},
 };
 
@@ -44,6 +47,13 @@ struct Config {
     default_license_days: i64,
     default_device_limit: i64,
     token_ttl_hours: i64,
+    /// Where the bundled extractor lives, if it is bundled. On the VPS it is
+    /// installed on PATH instead and this is simply not found.
+    bin_dir: Option<PathBuf>,
+    /// What one licence may ask for in a day, and how many addresses within an
+    /// hour is worth an admin's attention.
+    daily_cap: i64,
+    ip_alert: usize,
 }
 
 fn env_string(key: &str, fallback: &str) -> String {
@@ -72,6 +82,9 @@ impl Config {
             default_license_days: env_number("DEFAULT_LICENSE_DAYS", 30),
             default_device_limit: env_number("VELOX_DEVICE_LIMIT", 1),
             token_ttl_hours: env_number("TOKEN_TTL_HOURS", 24),
+            bin_dir: std::env::var("VELOX_BIN_DIR").ok().map(PathBuf::from),
+            daily_cap: env_number("VELOX_DAILY_CAP", 300),
+            ip_alert: env_number("VELOX_IP_ALERT", 6),
         }
     }
 }
@@ -133,6 +146,8 @@ async fn main() {
     let state: Shared = Arc::new(AppState {
         db,
         tokens,
+        extractor: Extractor::from_env(config.bin_dir.as_deref()),
+        usage: DailyUsage::new(config.daily_cap, config.ip_alert),
         trial_downloads: config.trial_downloads,
         default_license_days: config.default_license_days,
         default_device_limit: config.default_device_limit,

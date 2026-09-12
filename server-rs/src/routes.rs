@@ -8,6 +8,8 @@
 use crate::{
     auth::Tokens,
     db::Db,
+    extract::{Extractor, Selection},
+    gate::{self, DailyUsage},
     model::{self, Key},
 };
 use axum::{
@@ -24,6 +26,10 @@ use std::sync::Arc;
 pub struct AppState {
     pub db: Db,
     pub tokens: Tokens,
+    pub extractor: Extractor,
+    /// The per-key daily ceiling, kept in memory: it is a rate limit, not a
+    /// record, and it clears itself at midnight.
+    pub usage: DailyUsage,
     pub trial_downloads: i64,
     pub default_license_days: i64,
     pub default_device_limit: i64,
@@ -388,12 +394,196 @@ async fn plans(State(state): State<Shared>) -> impl IntoResponse {
     )
 }
 
+// --------------------------------------------------------- gated routes
+//
+// Everything below asks the extractor something, so everything below goes
+// through the gates first: a valid token for an active key on one of its
+// machines, the day's ceiling, and the trial's own count.
+
+#[derive(Deserialize, Default)]
+pub struct GatedBody {
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    mode: Option<String>,
+    #[serde(default)]
+    quality: Option<String>,
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    limit: Option<i64>,
+    #[serde(default, rename = "vCodec")]
+    vcodec: Option<String>,
+    #[serde(default, rename = "aFormat")]
+    aformat: Option<String>,
+}
+
+fn bearer(headers: &HeaderMap) -> Option<&str> {
+    headers.get(axum::http::header::AUTHORIZATION).and_then(|v| v.to_str().ok())
+}
+
+/// The first two gates, which every gated route needs.
+fn admit(
+    state: &AppState,
+    headers: &HeaderMap,
+    token: Option<&String>,
+) -> Result<(gate::Licence, String), (StatusCode, Json<Value>)> {
+    let ip = client_ip(headers);
+    let licence = gate::require_licence(state, bearer(headers), token.map(String::as_str))?;
+    gate::enforce_daily_cap(state, &licence, &ip)?;
+    Ok((licence, ip))
+}
+
+/// Called once before each download by the app that does its own downloading.
+/// It spends the credit; the bytes never come near the server.
+async fn authorize(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Json(body): Json<GatedBody>,
+) -> impl IntoResponse {
+    let (licence, ip) = match admit(&state, &headers, body.token.as_ref()) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let cap = settings(&state).trial_downloads;
+    let remaining = match gate::enforce_trial(&state, &licence, &ip, cap) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+
+    gate::spend_download(&state, &licence);
+    model::log_event(
+        &state.db,
+        "authorize",
+        Some(&licence.key.key),
+        &ip,
+        if licence.key.trial { "trial" } else { "paid" },
+    );
+    (
+        StatusCode::OK,
+        ok(json!({
+            "trial": licence.key.trial,
+            "trialRemaining": remaining.map(|r| (r - 1).max(0)),
+        })),
+    )
+}
+
+/// Read a link: what it is, and the options to offer for it. No credit is spent
+/// — someone pasting a link has not downloaded anything yet.
+async fn extract(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Json(body): Json<GatedBody>,
+) -> impl IntoResponse {
+    let (licence, ip) = match admit(&state, &headers, body.token.as_ref()) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let cap = settings(&state).trial_downloads;
+    // Refused early for a spent trial, so the wall appears on paste rather than
+    // after the customer has chosen a quality.
+    if let Err(e) = gate::enforce_trial(&state, &licence, &ip, cap) {
+        return e;
+    }
+
+    let info = state.extractor.probe(body.url.as_deref().unwrap_or_default()).await;
+    if info["ok"] != json!(true) {
+        return (StatusCode::UNPROCESSABLE_ENTITY, Json(info));
+    }
+    model::log_event(
+        &state.db,
+        "extract",
+        Some(&licence.key.key),
+        &ip,
+        info["meta"]["extractor"].as_str().unwrap_or_default(),
+    );
+    (StatusCode::OK, Json(info))
+}
+
+/// Turn a chosen option into the URLs the client fetches. This is the one that
+/// counts as a download.
+async fn resolve(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Json(body): Json<GatedBody>,
+) -> impl IntoResponse {
+    let (licence, ip) = match admit(&state, &headers, body.token.as_ref()) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let cap = settings(&state).trial_downloads;
+    if let Err(e) = gate::enforce_trial(&state, &licence, &ip, cap) {
+        return e;
+    }
+
+    let out = state
+        .extractor
+        .resolve(
+            body.url.as_deref().unwrap_or_default(),
+            &Selection {
+                mode: body.mode.clone(),
+                quality: body.quality.clone(),
+                vcodec: body.vcodec.clone(),
+                aformat: body.aformat.clone(),
+            },
+        )
+        .await;
+    if out["ok"] != json!(true) {
+        // Nothing is spent on a link that could not be resolved.
+        return (StatusCode::UNPROCESSABLE_ENTITY, Json(out));
+    }
+
+    gate::spend_download(&state, &licence);
+    model::log_event(
+        &state.db,
+        "resolve",
+        Some(&licence.key.key),
+        &ip,
+        &format!("{}/{}", out["mode"].as_str().unwrap_or("video"), body.quality.clone().unwrap_or_default()),
+    );
+    (StatusCode::OK, Json(out))
+}
+
+async fn search(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Json(body): Json<GatedBody>,
+) -> impl IntoResponse {
+    if let Err(e) = admit(&state, &headers, body.token.as_ref()) {
+        return e;
+    }
+    let out = state.extractor.search(body.query.as_deref().unwrap_or_default(), body.limit).await;
+    let status = if out["ok"] == json!(true) { StatusCode::OK } else { StatusCode::UNPROCESSABLE_ENTITY };
+    (status, Json(out))
+}
+
+async fn extractors(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    body: Option<Json<GatedBody>>,
+) -> impl IntoResponse {
+    let body = body.map(|Json(b)| b).unwrap_or_default();
+    if let Err(e) = admit(&state, &headers, body.token.as_ref()) {
+        return e;
+    }
+    let out = state.extractor.list_sites().await;
+    let status = if out["ok"] == json!(true) { StatusCode::OK } else { StatusCode::UNPROCESSABLE_ENTITY };
+    (status, Json(out))
+}
+
 pub fn router() -> Router<Shared> {
     Router::new()
         .route("/api/signup", post(signup))
         .route("/api/activate", post(activate))
         .route("/api/heartbeat", post(heartbeat))
         .route("/api/plans", get(plans))
+        .route("/api/authorize", post(authorize))
+        .route("/api/extract", post(extract))
+        .route("/api/resolve", post(resolve))
+        .route("/api/search", post(search))
+        .route("/api/extractors", post(extractors))
 }
 
 /// Lets a handler return either `ok(...)` or `fail(...)` from the same
