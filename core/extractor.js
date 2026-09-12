@@ -9,12 +9,12 @@
 
 const fs = require('fs');
 const { spawn } = require('child_process');
-const { resolveBinary, defaultBinDir, normalizeHttpUrl } = require('./downloader');
+const { resolveBinary, defaultBinDir, normalizeHttpUrl, jsRuntimeArgs, jsRuntimeEnv } = require('./downloader');
 
 function run(args, opts = {}) {
   const binDir = opts.binDir || defaultBinDir();
   return new Promise((resolve) => {
-    const proc = spawn(resolveBinary('yt-dlp', binDir), args, { windowsHide: true });
+    const proc = spawn(resolveBinary('yt-dlp', binDir), args, { windowsHide: true, env: jsRuntimeEnv(binDir) });
     let out = '', err = '';
     const timer = setTimeout(() => { try { proc.kill(); } catch {} }, opts.timeoutMs || 60000);
     proc.stdout.on('data', (d) => (out += d.toString()));
@@ -28,6 +28,13 @@ function netArgs(opts) {
   const a = [];
   if (Number(opts.socketTimeout) > 0) a.push('--socket-timeout', String(opts.socketTimeout));
   if (opts.maxRetries != null) a.push('--retries', String(opts.maxRetries), '--fragment-retries', String(opts.maxRetries));
+  // Already resolved by the caller against the user's proxy scope, so by the
+  // time it gets here it is either a proxy to use or nothing.
+  if (opts.proxy) a.push('--proxy', String(opts.proxy));
+  // Off unless asked for: it was measured adding ten seconds to a probe and
+  // returning an identical format list, so it belongs on the retry rather than
+  // on the paste every user waits through.
+  a.push(...jsRuntimeArgs(opts.binDir || defaultBinDir(), opts.jsRuntime));
   return a;
 }
 
@@ -38,10 +45,16 @@ function netArgs(opts) {
 // --cookies is harmless for non-YouTube sites; --extractor-args is YouTube-scoped.
 function siteArgs() {
   const a = [];
-  const cookies = process.env.VELOX_YTDLP_COOKIES;
-  if (cookies && fs.existsSync(cookies)) a.push('--cookies', cookies);
-  const clients = (process.env.VELOX_YT_PLAYER_CLIENTS || '').trim();
-  if (clients) a.push('--extractor-args', `youtube:player_client=${clients}`);
+  // Explicit file first, then the jar exported from the Browser tab session.
+  const cookies = [process.env.VELOX_YTDLP_COOKIES, process.env.VELOX_YTDLP_COOKIES_AUTO]
+    .find((p) => p && fs.existsSync(p));
+  if (cookies) a.push('--cookies', cookies);
+  // Same default as the downloader: YouTube's default client now rejects many
+  // ordinary videos, and the android client still serves them.
+  const raw = (process.env.VELOX_YT_PLAYER_CLIENTS || '').trim();
+  if (raw.toLowerCase() !== 'off') {
+    a.push('--extractor-args', `youtube:player_client=${raw || 'default,android'}`);
+  }
   return a;
 }
 
@@ -156,6 +169,59 @@ async function resolveStreams(url, sel = {}, opts = {}) {
   };
 }
 
+// List what a playlist, channel or mix actually contains.
+//
+// probe() cannot answer this: it runs with --no-playlist, so a playlist link
+// resolves to a single video there and its isPlaylist flag is never true.
+// --flat-playlist asks for the index only, so this costs one request instead of
+// one per video: a 4-item read of a channel came back in about a second where
+// resolving each entry would have taken minutes.
+async function playlistEntries(url, opts = {}) {
+  const u = normalizeHttpUrl(url);
+  if (!u) return { ok: false, error: 'invalid or missing url' };
+
+  // A cap, not a preference: some "playlists" are an entire channel, and mixes
+  // (list=RD...) are generated forever. Reading every entry of one of those
+  // would hang the paste.
+  const limit = Math.max(1, Math.min(1000, parseInt(opts.limit, 10) || 200));
+  const args = [
+    '-J', '--flat-playlist', '--no-warnings',
+    '--playlist-end', String(limit),
+    ...netArgs(opts), ...siteArgs(), u,
+  ];
+  const r = await run(args, opts);
+  if (!r.ok) return { ok: false, error: cleanErr(r.err) || 'could not read this link' };
+
+  let j;
+  try { j = JSON.parse(r.out); } catch { return { ok: false, error: 'could not read this playlist' }; }
+  if (j._type !== 'playlist') return { ok: true, isPlaylist: false };
+
+  const entries = (j.entries || [])
+    .filter((e) => e && (e.url || e.id))
+    .map((e, i) => ({
+      index: i + 1,
+      id: e.id || '',
+      title: e.title || e.id || `Video ${i + 1}`,
+      url: e.url || (e.id ? `https://www.youtube.com/watch?v=${e.id}` : ''),
+      duration: e.duration || 0,
+      // Private and deleted entries stay in the index with no title; they are
+      // kept so the numbering matches the playlist, but marked so the picker
+      // can leave them unchecked.
+      unavailable: !e.title || /^\[(private|deleted) video\]$/i.test(String(e.title)),
+    }))
+    .filter((e) => e.url);
+
+  return {
+    ok: true,
+    isPlaylist: true,
+    title: j.title || 'Playlist',
+    uploader: j.uploader || j.channel || '',
+    total: j.playlist_count || entries.length,
+    truncated: entries.length >= limit,
+    entries,
+  };
+}
+
 // Search (so the client needs no local yt-dlp for the search tab).
 async function search(query, limit, opts = {}) {
   const q = String(query || '').trim();
@@ -199,7 +265,10 @@ function cleanErr(err) {
   if (!err) return '';
   // surface the last ERROR line yt-dlp printed, trimmed
   const line = err.split(/\r?\n/).reverse().find((l) => /error/i.test(l));
-  return (line || err).replace(/^ERROR:\s*/i, '').trim().slice(-300);
+  // Keep the head of the message: yt-dlp puts the extractor and the actual
+  // cause first, so trimming from the end left users reading "imeo] 99275110".
+  return (line || err).replace(/^ERROR:\s*/i, '').trim().slice(0, 300);
 }
 
-module.exports = { probe, resolveStreams, search, listExtractors, videoSelector, audioSelector };
+module.exports = {
+  playlistEntries, probe, resolveStreams, search, listExtractors, videoSelector, audioSelector };

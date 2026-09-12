@@ -138,6 +138,16 @@
    Light mode — toggled via <body class="light"> in the app.
    ------------------------------------------------------------ */
 body.light, .velox-light {
+  /* Aliases are substituted where they are declared, so the :root copies
+     above keep their dark values. Redeclare them here or anything using
+     var(--velox-bg) stays dark on the light theme. */
+  --velox-bg:            #f4f6fb;
+  --velox-bg-elev:       rgba(248, 250, 253, 0.72);
+  --velox-surface:       rgba(255, 255, 255, 0.78);
+  --velox-surface-2:     rgba(0, 0, 0, 0.04);
+  --velox-stroke:        rgba(0, 0, 0, 0.08);
+  --velox-stroke-strong: rgba(0, 0, 0, 0.14);
+
   --velox-bg-app:         #f4f6fb;
   --velox-bg-card:        rgba(255, 255, 255, 0.78);
   --velox-bg-card-2:      rgba(248, 250, 253, 0.72);

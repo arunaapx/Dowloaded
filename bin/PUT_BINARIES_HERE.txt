@@ -1,7 +1,19 @@
 Place these files in this folder:
 
-1. yt-dlp.exe   — https://github.com/yt-dlp/yt-dlp/releases/latest
-                  (download "yt-dlp.exe" from the Assets list)
+1. yt-dlp        — https://github.com/yt-dlp/yt-dlp/releases/latest
+                  Download "yt-dlp_win.zip" and unzip it here, so this folder
+                  ends up with BOTH yt-dlp.exe and the _internal folder.
+
+                  Use the zip, not the standalone yt-dlp.exe. The standalone
+                  one unpacks itself into TEMP on every single run: measured
+                  2.1-2.6 seconds of start-up per call against 0.9-1.0 for the
+                  zip, and it leaves the unpacked copy behind whenever the
+                  process is killed (which pausing a download does). 247 of
+                  those leftovers, 1.03 GB, once filled a disk here and every
+                  download then failed with a decompression error.
+
+                  _internal must sit next to yt-dlp.exe or the exe will not
+                  start at all.
 
 2. ffmpeg.exe   — https://www.gyan.dev/ffmpeg/builds/
                   (download "ffmpeg-release-essentials.zip", extract,

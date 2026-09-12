@@ -12,7 +12,9 @@ contextBridge.exposeInMainWorld('api', {
   readClipboard: () => ipcRenderer.invoke('read-clipboard'),
   checkBinaries: () => ipcRenderer.invoke('check-binaries'),
   fetchInfo: (url) => ipcRenderer.invoke('fetch-info', url),
-  startDownload: (payload) => ipcRenderer.invoke('start-download', payload),
+  // No startDownload here: downloads go through clientDownload below, and the
+  // 'start-download' channel it used to offer has no handler in main — calling
+  // it would have rejected, which the renderer shows as a network failure.
   clientExtract: (url) => ipcRenderer.invoke('client-extract', url),
   playlistInfo: (url, limit) => ipcRenderer.invoke('playlist-info', { url, limit }),
   clientDownload: (payload) => ipcRenderer.invoke('client-download', payload),
