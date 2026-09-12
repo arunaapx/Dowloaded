@@ -107,6 +107,7 @@ module.exports = function createExtractRouter(deps) {
   // revoked/expired via requireLicense) and spends one device-locked trial credit.
   router.post('/authorize', limit, requireLicense, usageGuard, trialGuard, (req, res) => {
     if (req.trial?.isTrial && req.trial.deviceId) stmts.bumpDeviceTrial.run(req.trial.deviceId);
+    if (req.license?.key) stmts.bumpUsage.run(req.license.key);
     if (req.license?.key) logEvent('authorize', req.license.key, getIp(req), req.trial?.isTrial ? 'trial' : 'paid');
     const remaining = req.trial?.isTrial ? Math.max(0, trialCap() - (req.trial.used + 1)) : null;
     res.json({ ok: true, trial: !!req.trial?.isTrial, trialRemaining: remaining });
@@ -132,6 +133,7 @@ module.exports = function createExtractRouter(deps) {
     }, EXTRACT_OPTS);
     if (!out.ok) return res.status(422).json(out);
     if (req.trial?.isTrial && req.trial.deviceId) stmts.bumpDeviceTrial.run(req.trial.deviceId);
+    if (req.license?.key) stmts.bumpUsage.run(req.license.key);
     if (req.license?.key) logEvent('resolve', req.license.key, getIp(req), `${out.mode}/${req.body?.quality || ''}`);
     res.json(out);
   });

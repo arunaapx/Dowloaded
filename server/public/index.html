@@ -56,6 +56,11 @@
           <span class="hint">How long a new trial key lasts. 0 = never expires.</span>
         </label>
         <label class="setting">
+          <span class="setting-label">Devices per key (default)</span>
+          <input type="number" id="setDevices" min="1" max="20" />
+          <span class="hint">Used when a key has no plan and no number of its own. A plan's own allowance wins over this.</span>
+        </label>
+        <label class="setting">
           <span class="setting-label">Sign-ups per hour, per IP</span>
           <input type="number" id="setRate" min="0" max="100000" />
           <span class="hint">
@@ -71,6 +76,76 @@
       </div>
     </section>
 
+    <!-- What customers see on the Account screen in the app. Editing a price
+         here changes it in every running app on its next heartbeat. -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Pricing plans</h2>
+        <span id="plansState" class="hint"></span>
+      </div>
+      <div id="plansList"></div>
+      <div class="setting setting-actions">
+        <button class="btn ghost" id="planAdd" type="button">+ Add plan</button>
+        <button class="btn primary" id="plansSave" type="button">Save plans</button>
+        <span id="plansResult" class="hint"></span>
+      </div>
+      <div class="hint">
+        A plan appears in the app only when it has a price <b>and</b> Published is
+        ticked, so an unfinished plan can never reach a customer.
+      </div>
+    </section>
+
+    <!-- Messages pushed to the app: a banner inside it, and a desktop
+         notification. Delivered on the next heartbeat. -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Notifications</h2>
+        <span id="noticesState" class="hint"></span>
+      </div>
+      <div class="settings-grid">
+        <label class="setting">
+          <span class="setting-label">Title</span>
+          <input type="text" id="ntTitle" maxlength="80" placeholder="New version out now" />
+        </label>
+        <label class="setting">
+          <span class="setting-label">Who sees it</span>
+          <select id="ntAudience">
+            <option value="all">Everyone</option>
+            <option value="trial">Trial users</option>
+            <option value="trial-exhausted">Trial users who ran out of downloads</option>
+            <option value="paid">Paying customers</option>
+            <option value="expired">Expired licences</option>
+          </select>
+        </label>
+        <label class="setting">
+          <span class="setting-label">Message</span>
+          <textarea id="ntBody" rows="3" maxlength="400" placeholder="What you want them to know."></textarea>
+        </label>
+        <label class="setting">
+          <span class="setting-label">Style</span>
+          <select id="ntLevel">
+            <option value="info">Info — plain</option>
+            <option value="promo">Offer — highlighted</option>
+            <option value="warn">Warning — stands out</option>
+          </select>
+        </label>
+        <label class="setting">
+          <span class="setting-label">Button text (optional)</span>
+          <input type="text" id="ntActionLabel" maxlength="40" placeholder="See plans" />
+        </label>
+        <label class="setting">
+          <span class="setting-label">Button link (optional)</span>
+          <input type="text" id="ntActionUrl" maxlength="300" placeholder="https://veloxdownloader.prolanka.online/#pricing" />
+          <span class="hint">Must start with https:// — it opens in the customer's browser.</span>
+        </label>
+        <div class="setting setting-actions">
+          <button class="btn primary" id="noticePublish" type="button">Publish</button>
+          <span id="noticeResult" class="hint"></span>
+        </div>
+      </div>
+      <div id="noticesList" class="notice-list"></div>
+    </section>
+
     <section class="card">
       <div class="card-header">
         <h2>Keys</h2>
@@ -84,6 +159,7 @@
               <th>Email</th>
               <th>Expiry</th>
               <th>Device</th>
+              <th>Devices</th>
               <th>Trial</th>
               <th>Created</th>
               <th>Heartbeat</th>
@@ -109,6 +185,40 @@
           <tbody id="devicesBody"></tbody>
         </table>
       </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h2>YouTube cookies</h2>
+        <span class="hint">
+          Export cookies.txt from a browser signed in to YouTube, in Netscape format.
+          This is the only thing that gets past &ldquo;Sign in to confirm you&rsquo;re not a bot&rdquo;.
+        </span>
+      </div>
+
+      <div class="cookie-state" id="cookieState">Loading&hellip;</div>
+
+      <div class="cookie-warn">
+        Treat this like a password. It signs every extraction in as that Google
+        account until the cookies expire. Use an account you are willing to lose &mdash;
+        YouTube&rsquo;s terms do not allow this and such accounts do get banned.
+      </div>
+
+      <label class="setting">
+        <span class="setting-label">Paste cookies.txt, or choose a file</span>
+        <textarea id="cookieText" rows="5" spellcheck="false"
+                  placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;1799999999&#9;SID&#9;..."></textarea>
+      </label>
+
+      <div class="cookie-actions">
+        <input type="file" id="cookieFile" accept=".txt,text/plain" hidden />
+        <button class="ghost" id="cookiePick" type="button">Choose file&hellip;</button>
+        <button class="primary" id="cookieSave" type="button">Save cookies</button>
+        <button class="ghost" id="cookieTest" type="button">Test against YouTube</button>
+        <button class="danger" id="cookieClear" type="button">Remove</button>
+      </div>
+
+      <div class="cookie-result" id="cookieResult"></div>
     </section>
 
     <section class="card">
@@ -158,6 +268,12 @@
       </label>
       <label>Note
         <input type="text" id="editNote" placeholder="Admin note" />
+      </label>
+      <label>Plan
+        <select id="editPlan"></select>
+      </label>
+      <label>Devices allowed
+        <input type="number" id="editDevices" min="1" max="20" placeholder="follow the plan" />
       </label>
       <div class="modal-actions">
         <button class="btn ghost" id="editLifetime">Lifetime</button>

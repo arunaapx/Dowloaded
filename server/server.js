@@ -20,6 +20,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const TRIAL_DOWNLOADS = Math.max(1, parseInt(process.env.VELOX_TRIAL_DOWNLOADS || '5', 10));
 // Default sign-ups per hour per IP. Generous on purpose; see settings().
 const SIGNUP_PER_HOUR = Math.max(0, parseInt(process.env.VELOX_SIGNUP_PER_HOUR || '60', 10));
+// Machines per key when neither the key nor its plan says otherwise. One is the
+// old behaviour, and stays the default.
+const DEFAULT_DEVICE_LIMIT = Math.max(1, parseInt(process.env.VELOX_DEVICE_LIMIT || '1', 10));
 
 // Persist JWT secret in data/ so tokens survive restart
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -41,6 +44,7 @@ if (!ADMIN_PASS) {
 
 const KEY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newKeyId = customAlphabet(KEY_ALPHABET, 5);
+const newNoticeId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 10);
 function makeKey() {
   // VLX-XXXXX-XXXXX-XXXXX
   return `VLX-${newKeyId()}-${newKeyId()}-${newKeyId()}`;
@@ -49,6 +53,13 @@ function makeKey() {
 const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '32kb' }));
+
+// The YouTube cookie jar, if one has been uploaded. Applied at boot so a
+// restart does not quietly drop back to anonymous extraction.
+const ytCookies = require('./cookies');
+if (ytCookies.apply()) {
+  console.log('[velox-license] YouTube cookies loaded from', ytCookies.COOKIE_FILE);
+}
 
 // --- helpers ---
 const getIp = (req) => (req.ip || req.headers['x-forwarded-for'] || '').toString();
@@ -124,12 +135,58 @@ function settings() {
   // innocent people, not abusers - the one-email-per-device hardware lock is
   // what actually limits how many keys anyone can obtain. 0 turns it off.
   const perHour = Number(s.signupPerHour);
+  const devices = Number(s.defaultDeviceLimit);
   return {
+    defaultDeviceLimit: Number.isFinite(devices) && devices >= 1 ? Math.floor(devices) : DEFAULT_DEVICE_LIMIT,
     signupEnabled: s.signupEnabled === undefined ? true : !!s.signupEnabled,
     trialDownloads: Number.isFinite(trial) && trial >= 1 ? Math.floor(trial) : TRIAL_DOWNLOADS,
     defaultLicenseDays: Number.isFinite(days) && days >= 0 ? Math.floor(days) : DEFAULT_LICENSE_DAYS,
     signupPerHour: Number.isFinite(perHour) && perHour >= 0 ? Math.floor(perHour) : SIGNUP_PER_HOUR,
   };
+}
+
+// Every machine this key is registered on. The ledger is the record, but a key
+// bound before the ledger existed only has device_id, so both are counted.
+function boundDeviceIds(row) {
+  if (!row) return [];
+  const ids = new Set();
+  if (row.device_id) ids.add(row.device_id);
+  for (const d of stmts.devicesForKey.all(row.key)) if (d.deviceId) ids.add(d.deviceId);
+  return [...ids];
+}
+
+// How many machines this key may run on: its own override first, then whatever
+// its plan allows, then the default. Raising a plan's allowance therefore lifts
+// every key sold on that plan, without touching them one by one.
+function deviceLimitFor(row) {
+  if (!row) return settings().defaultDeviceLimit;
+  const override = Number(row.device_limit);
+  if (Number.isFinite(override) && override >= 1) return Math.floor(override);
+  const plan = row.plan ? stmts.allPlans.all().find((p) => p.id === row.plan) : null;
+  const fromPlan = plan ? Number(plan.devices) : NaN;
+  if (Number.isFinite(fromPlan) && fromPlan >= 1) return Math.floor(fromPlan);
+  return settings().defaultDeviceLimit;
+}
+
+// May this machine join this key? Already-registered machines always may.
+function deviceAllowed(row, deviceId) {
+  const bound = boundDeviceIds(row);
+  if (bound.includes(deviceId)) return { ok: true, bound, limit: deviceLimitFor(row), known: true };
+  const limit = deviceLimitFor(row);
+  return { ok: bound.length < limit, bound, limit, known: false };
+}
+
+// Registers a machine against a key, in the ledger and (for the first one) on
+// the key itself, so old code that reads key.device_id still sees a device.
+function bindDeviceRow(row, deviceId, deviceName) {
+  if (!row.device_id) stmts.bindDevice.run(deviceId, deviceName, Date.now(), row.key);
+  stmts.bindDeviceToKey.run(deviceId, row.key, row.email || '', deviceName);
+}
+
+function deviceLimitError(check) {
+  return check.limit === 1
+    ? 'This key is already connected with another device. Contact support to move it.'
+    : `This key is already in use on ${check.bound.length} of ${check.limit} devices. Remove one, or contact support.`;
 }
 
 // Free downloads left on a trial key's bound device (null for paid keys).
@@ -138,6 +195,70 @@ function trialRemaining(row) {
   const dev = row.device_id ? stmts.getDevice.get(row.device_id) : null;
   const used = dev ? (dev.trialDownloads || 0) : 0;
   return Math.max(0, settings().trialDownloads - used);
+}
+
+// The pricing table as the app sees it: only plans someone has finished
+// filling in and switched on. An unpriced or inactive plan stays in the admin
+// panel and never reaches a customer, so a half-written price can't ship.
+function publicPlans() {
+  return stmts.allPlans.all()
+    .filter((p) => p.active && String(p.price || '').trim())
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: p.price,
+      period: p.period || '',
+      devices: Number(p.devices) || 1,
+      features: Array.isArray(p.features) ? p.features : [],
+      highlight: !!p.highlight,
+      buyUrl: p.buyUrl || '',
+      order: p.order || 0,
+    }));
+}
+
+// Who a notice is for. `trial-exhausted` is the moment worth catching: the
+// person has spent every free download and is looking at a wall, which is
+// exactly when an upgrade offer is worth showing.
+function noticeMatches(notice, row) {
+  const audience = notice.audience || 'all';
+  if (audience === 'all') return true;
+  if (!row) return false;
+  const expired = !!(row.expires_at && row.expires_at <= Date.now());
+  if (audience === 'expired') return expired;
+  if (audience === 'trial') return !!row.trial && !expired;
+  if (audience === 'paid') return !row.trial && !expired;
+  if (audience === 'trial-exhausted') return !!row.trial && !expired && trialRemaining(row) === 0;
+  return false;
+}
+
+function noticesFor(row) {
+  return stmts.allNotices.all()
+    .filter((n) => n.active && noticeMatches(n, row))
+    .map((n) => ({
+      id: n.id,
+      title: n.title,
+      body: n.body,
+      level: n.level || 'info',
+      actionLabel: n.actionLabel || '',
+      actionUrl: n.actionUrl || '',
+      createdAt: n.created_at || 0,
+    }));
+}
+
+// What the app is told about the plan a key was sold on. A trial key has no
+// plan of its own, so it is named as the trial it is.
+function planFor(row) {
+  if (row.trial) return { id: null, name: 'Free trial', features: [] };
+  const plan = stmts.allPlans.all().find((p) => p.id === row.plan);
+  if (!plan) return { id: null, name: 'Licensed', features: [] };
+  return {
+    id: plan.id,
+    name: plan.name,
+    price: plan.price || '',
+    period: plan.period || '',
+    devices: Number(plan.devices) || 1,
+    features: Array.isArray(plan.features) ? plan.features : [],
+  };
 }
 
 function publicProfile(row) {
@@ -152,6 +273,9 @@ function publicProfile(row) {
     trial: !!row.trial,
     trialTotal: row.trial ? settings().trialDownloads : null,
     trialRemaining: trialRemaining(row),
+    plan: planFor(row),
+    downloadsToday: stmts.getUsage.get(row.key).count,
+    devices: { used: boundDeviceIds(row).length, limit: deviceLimitFor(row) },
   };
 }
 
@@ -164,6 +288,8 @@ function publicAdminKey(row) {
     trial: !!row.trial,
     trial_used: dev ? (dev.trialDownloads || 0) : 0,
     trial_total: row.trial ? settings().trialDownloads : null,
+    devices_used: boundDeviceIds(row).length,
+    devices_limit: deviceLimitFor(row),
   };
 }
 
@@ -280,9 +406,9 @@ const signupLimit = rateLimit({
     });
   },
 });
-const activateLimit = limited(60 * 1000, 10,
+const activateLimit = limited(60 * 1000, Math.max(1, parseInt(process.env.VELOX_ACTIVATE_PER_MIN || '10', 10)),
   'Too many activation attempts. Please wait a minute and try again.');
-const heartbeatLimit = limited(60 * 1000, 30,
+const heartbeatLimit = limited(60 * 1000, Math.max(1, parseInt(process.env.VELOX_HEARTBEAT_PER_MIN || '30', 10)),
   'Too many requests. Please wait a minute.');
 
 app.post('/api/signup', signupLimit, (req, res) => {
@@ -321,20 +447,20 @@ app.post('/api/signup', signupLimit, (req, res) => {
     // Hardware lock. The email belongs to the machine it was registered on, and
     // only an admin reset-device can move it. A second machine is refused, not
     // blocked: the account stays perfectly healthy on its own device.
-    const boundDevice = existing.device_id || (stmts.findDeviceByEmail.get(email) || {}).deviceId || null;
-    if (boundDevice && boundDevice !== deviceId) {
+    const check = deviceAllowed(existing, deviceId);
+    if (!check.ok) {
       logEvent('signup-device-mismatch', existing.key, getIp(req),
-        `${email} bound:${boundDevice.slice(0, 12)} tried:${deviceId.slice(0, 12)}`);
+        `${email} on ${check.bound.length}/${check.limit} devices, tried:${deviceId.slice(0, 12)}`);
       return res.status(409).json({
         ok: false,
-        error: 'This email is already connected with another device. Contact support to move it.',
+        error: deviceLimitError(check),
         deviceMismatch: true,
+        devices: { used: check.bound.length, limit: check.limit },
       });
     }
 
-    // Same machine (or a key that had never been bound): (re)assert the binding
-    // so an older key created before hardware binding existed gets locked now.
-    if (!existing.device_id) stmts.bindDevice.run(deviceId, deviceName, Date.now(), existing.key);
+    // A machine that is already on the key, or one the allowance has room for.
+    bindDeviceRow(existing, deviceId, deviceName);
     stmts.bindDeviceEmail.run(deviceId, email, existing.key);
     logEvent('signup-existing', existing.key, getIp(req), email);
     return res.json(ok({ key: existing.key, expiresAt: existing.expires_at || null, profile: publicProfile(stmts.findKey.get(existing.key)), message: 'existing key returned' }));
@@ -372,6 +498,7 @@ app.post('/api/signup', signupLimit, (req, res) => {
   // claim it from any machine.
   stmts.bindDevice.run(deviceId, deviceName, Date.now(), key);
   stmts.bindDeviceEmail.run(deviceId, email, key);
+  stmts.bindDeviceToKey.run(deviceId, key, email, deviceName);
   const row = stmts.findKey.get(key);
   logEvent('signup-trial', key, getIp(req), `${email} / device ${deviceId.slice(0, 12)}`);
   res.json(ok({ key, expiresAt, profile: publicProfile(row) }));
@@ -402,12 +529,14 @@ app.post('/api/activate', activateLimit, (req, res) => {
     logEvent('activate-expired', key, getIp(req), deviceId);
     return res.status(403).json({ ok: false, error: 'license expired', expired: true });
   }
-  if (row.device_id && row.device_id !== deviceId) {
-    logEvent('activate-conflict', key, getIp(req), `bound:${row.device_id} vs ${deviceId}`);
+  const check = deviceAllowed(row, deviceId);
+  if (!check.ok) {
+    logEvent('activate-conflict', key, getIp(req), `${check.bound.length}/${check.limit} devices, tried ${deviceId.slice(0, 12)}`);
     return res.status(409).json({
       ok: false,
-      error: 'This key is already connected with another device. Contact support to move it.',
+      error: deviceLimitError(check),
       deviceMismatch: true,
+      devices: { used: check.bound.length, limit: check.limit },
     });
   }
 
@@ -424,12 +553,12 @@ app.post('/api/activate', activateLimit, (req, res) => {
     });
   }
 
-  if (!row.device_id) {
-    stmts.bindDevice.run(deviceId, deviceName, Date.now(), key);
-    logEvent('activate', key, getIp(req), `${deviceName} / ${deviceId}`);
-  } else {
+  if (check.known) {
     logEvent('reactivate', key, getIp(req), deviceId);
+  } else {
+    logEvent('activate', key, getIp(req), `${deviceName} / ${deviceId} (${check.bound.length + 1}/${check.limit})`);
   }
+  bindDeviceRow(row, deviceId, deviceName);
   // Keep the hardware ledger in step with the key, so the email<->device lock
   // holds for admin-issued and purchased keys too, not just self-signups.
   if (row.email) stmts.bindDeviceEmail.run(deviceId, row.email, key);
@@ -445,6 +574,8 @@ app.post('/api/activate', activateLimit, (req, res) => {
     expiresAt: row.expires_at || null,
     daysRemaining: daysRemaining(row.expires_at),
     profile: publicProfile(row),
+    plans: publicPlans(),
+    notices: noticesFor(row),
     expiresIn: TOKEN_TTL_HOURS * 3600,
   }));
 });
@@ -471,9 +602,14 @@ app.post('/api/heartbeat', heartbeatLimit, (req, res) => {
   }
   if (state === 'expired') {
     logEvent('heartbeat-expired', payload.key, getIp(req), payload.deviceId);
-    return res.status(403).json({ ok: false, error: 'license expired', expired: true });
+    return res.status(403).json({
+      ok: false, error: 'license expired', expired: true,
+      plans: publicPlans(), notices: noticesFor(row),
+    });
   }
-  if (row.device_id && payload.deviceId !== row.device_id) {
+  // Membership, not identity: a key may legitimately run on several machines,
+  // and an admin unbinding one is what takes it away again.
+  if (payload.deviceId && !boundDeviceIds(row).includes(payload.deviceId)) {
     return res.status(409).json({ ok: false, error: 'device mismatch' });
   }
   stmts.bumpHeartbeat.run(Date.now(), payload.key);
@@ -492,6 +628,8 @@ app.post('/api/heartbeat', heartbeatLimit, (req, res) => {
     expiresAt: row.expires_at || null,
     daysRemaining: daysRemaining(row.expires_at),
     profile: publicProfile(row),
+    plans: publicPlans(),
+    notices: noticesFor(row),
   }));
 });
 
@@ -555,6 +693,94 @@ app.get('/admin/api/events', requireAdmin, (_req, res) => {
   res.json({ ok: true, events: stmts.recentEvents.all() });
 });
 
+// --- YouTube cookies ---
+//
+// The only thing that reliably gets past "Sign in to confirm you're not a bot".
+// Everything about this endpoint assumes the file is a live credential: it is
+// accepted, validated and stored, and it never comes back out.
+
+// A cookies.txt is bigger than the 32kb JSON cap and is not JSON, so this one
+// route reads a text body of its own.
+const cookieBody = express.text({ type: ['text/plain', 'application/json'], limit: '512kb' });
+
+app.get('/admin/api/cookies', requireAdmin, (_req, res) => {
+  res.json(ok({ cookies: ytCookies.status() }));
+});
+
+app.post('/admin/api/cookies', requireAdmin, cookieBody, (req, res) => {
+  const text = typeof req.body === 'string' ? req.body : '';
+  if (!text.trim()) {
+    return res.status(400).json({ ok: false, error: 'Paste or upload a cookies.txt file.' });
+  }
+
+  const result = ytCookies.save(text);
+  if (!result.ok) {
+    // The file is rejected and nothing is stored. The reason is about shape,
+    // never about content.
+    return res.status(400).json({ ok: false, error: result.error, problems: result.problems });
+  }
+
+  // Counts and dates only. A cookie name or value in the event log would put
+  // the credential somewhere it can be read back.
+  logEvent('yt-cookies-upload', null, getIp(req),
+    `${result.summary.session} session cookies, expires ${result.summary.expiresAt || 'unknown'}`);
+  res.json(ok({ cookies: ytCookies.status() }));
+});
+
+app.delete('/admin/api/cookies', requireAdmin, (req, res) => {
+  ytCookies.clear();
+  logEvent('yt-cookies-clear', null, getIp(req), '');
+  res.json(ok({ cookies: ytCookies.status() }));
+});
+
+// Do they actually work? Upload without this is guesswork: the file can be
+// perfectly well-formed and still be signed out, and the only way to find out
+// is to ask YouTube.
+app.post('/admin/api/cookies/test', requireAdmin, async (req, res) => {
+  const url = typeof req.body?.url === 'string' && req.body.url.trim()
+    ? req.body.url.trim()
+    : 'https://www.youtube.com/watch?v=aqz-KE-bpKQ';
+
+  const started = Date.now();
+  try {
+    const { probe } = require('../core/extractor');
+    const info = await probe(url, {
+      socketTimeout: 20,
+      maxRetries: 1,
+      timeoutMs: 60000,
+      // The retry path's JS runtime: a cookie test that fails for want of one
+      // would point at the wrong culprit.
+      jsRuntime: true,
+    });
+    const tookMs = Date.now() - started;
+
+    if (!info.ok) {
+      const blocked = /not a bot|sign in to confirm|login required/i.test(info.error || '');
+      return res.json(ok({
+        test: {
+          passed: false,
+          blocked,
+          tookMs,
+          error: String(info.error || 'extraction failed').slice(0, 400),
+        },
+      }));
+    }
+
+    res.json(ok({
+      test: {
+        passed: true,
+        tookMs,
+        title: info.meta?.title || '',
+        uploader: info.meta?.uploader || '',
+        maxHeight: info.meta?.maxHeight || 0,
+        qualities: (info.videoOptions || []).length,
+      },
+    }));
+  } catch (e) {
+    res.json(ok({ test: { passed: false, tookMs: Date.now() - started, error: e.message } }));
+  }
+});
+
 // --- settings: the free-trial switch and its size ---
 app.get('/admin/api/settings', requireAdmin, (_req, res) => {
   res.json(ok({ settings: settings() }));
@@ -580,6 +806,13 @@ app.post('/admin/api/settings', requireAdmin, (req, res) => {
     }
     patch.defaultLicenseDays = Math.floor(n);
   }
+  if (req.body?.defaultDeviceLimit !== undefined) {
+    const n = Number(req.body.defaultDeviceLimit);
+    if (!Number.isFinite(n) || n < 1 || n > 20) {
+      return res.status(400).json({ ok: false, error: 'devices per key must be between 1 and 20' });
+    }
+    patch.defaultDeviceLimit = Math.floor(n);
+  }
   if (req.body?.signupPerHour !== undefined) {
     const n = Number(req.body.signupPerHour);
     if (!Number.isFinite(n) || n < 0 || n > 100000) {
@@ -591,6 +824,120 @@ app.post('/admin/api/settings', requireAdmin, (req, res) => {
   stmts.saveSettings.run(patch);
   logEvent('admin-settings', null, getIp(req), JSON.stringify(patch));
   res.json(ok({ settings: settings() }));
+});
+
+// --- pricing plans ---
+//
+// The whole table is saved at once: the panel edits it as one list, and a plan
+// that vanishes from the list is a plan that was deleted.
+const PLAN_PERIODS = ['', 'one time', 'per month', 'per year', 'per week'];
+
+app.get('/admin/api/plans', requireAdmin, (_req, res) => {
+  res.json(ok({ plans: stmts.allPlans.all() }));
+});
+
+app.post('/admin/api/plans', requireAdmin, (req, res) => {
+  const input = Array.isArray(req.body?.plans) ? req.body.plans : null;
+  if (!input) return res.status(400).json({ ok: false, error: 'plans must be a list' });
+  if (input.length > 20) return res.status(400).json({ ok: false, error: 'at most 20 plans' });
+
+  const seen = new Set();
+  const plans = [];
+  for (const [i, p] of input.entries()) {
+    const name = String(p?.name || '').trim().slice(0, 60);
+    if (!name) return res.status(400).json({ ok: false, error: `plan ${i + 1} needs a name` });
+    const id = String(p?.id || '').trim().slice(0, 40) || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (seen.has(id)) return res.status(400).json({ ok: false, error: `two plans share the id "${id}"` });
+    seen.add(id);
+    const period = String(p?.period || '').trim();
+    if (!PLAN_PERIODS.includes(period)) return res.status(400).json({ ok: false, error: `plan "${name}" has an unknown period` });
+    plans.push({
+      id,
+      name,
+      price: String(p?.price || '').trim().slice(0, 40),
+      period,
+      devices: Math.min(20, Math.max(1, Math.floor(Number(p?.devices) || 1))),
+      features: (Array.isArray(p?.features) ? p.features : [])
+        .map((f) => String(f || '').trim().slice(0, 120))
+        .filter(Boolean)
+        .slice(0, 12),
+      highlight: !!p?.highlight,
+      active: !!p?.active,
+      buyUrl: String(p?.buyUrl || '').trim().slice(0, 300),
+      order: Number.isFinite(Number(p?.order)) ? Number(p.order) : i,
+    });
+  }
+  stmts.savePlans.run(plans);
+  logEvent('admin-plans', null, getIp(req), `${plans.length} plans`);
+  res.json(ok({ plans: stmts.allPlans.all() }));
+});
+
+// --- broadcast notices ---
+//
+// Written here, delivered on the app's next heartbeat, shown as a banner (and
+// a desktop notification) to whoever the audience covers.
+const NOTICE_AUDIENCES = ['all', 'trial', 'trial-exhausted', 'paid', 'expired'];
+const NOTICE_LEVELS = ['info', 'promo', 'warn'];
+
+function readNotice(body) {
+  const title = String(body?.title || '').trim().slice(0, 80);
+  const text = String(body?.body || '').trim().slice(0, 400);
+  if (!title) return { error: 'a notice needs a title' };
+  const audience = String(body?.audience || 'all');
+  if (!NOTICE_AUDIENCES.includes(audience)) return { error: 'unknown audience' };
+  const level = String(body?.level || 'info');
+  if (!NOTICE_LEVELS.includes(level)) return { error: 'unknown level' };
+  const actionUrl = String(body?.actionUrl || '').trim().slice(0, 300);
+  if (actionUrl && !/^https:\/\//i.test(actionUrl)) return { error: 'the button link must start with https://' };
+  return {
+    value: {
+      title,
+      body: text,
+      audience,
+      level,
+      actionLabel: String(body?.actionLabel || '').trim().slice(0, 40),
+      actionUrl,
+      active: body?.active === undefined ? true : !!body.active,
+    },
+  };
+}
+
+app.get('/admin/api/notices', requireAdmin, (_req, res) => {
+  res.json(ok({ notices: stmts.allNotices.all(), audiences: NOTICE_AUDIENCES, levels: NOTICE_LEVELS }));
+});
+
+app.post('/admin/api/notices', requireAdmin, (req, res) => {
+  const parsed = readNotice(req.body);
+  if (parsed.error) return res.status(400).json({ ok: false, error: parsed.error });
+  if (stmts.allNotices.all().length >= 100) return res.status(400).json({ ok: false, error: 'too many notices — delete some first' });
+  const notice = { id: newNoticeId(), ...parsed.value, created_at: Date.now(), updated_at: Date.now() };
+  stmts.insertNotice.run(notice);
+  logEvent('admin-notice-new', null, getIp(req), `${notice.audience}: ${notice.title}`);
+  res.json(ok({ notice, notices: stmts.allNotices.all() }));
+});
+
+app.patch('/admin/api/notices/:id', requireAdmin, (req, res) => {
+  const id = String(req.params.id || '');
+  const existing = stmts.allNotices.all().find((n) => n.id === id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'unknown notice' });
+  // The active switch on its own is the common edit, so allow it alone.
+  if (Object.keys(req.body || {}).length === 1 && req.body.active !== undefined) {
+    stmts.updateNotice.run(id, { active: !!req.body.active });
+    logEvent('admin-notice-toggle', null, getIp(req), `${id} -> ${req.body.active ? 'on' : 'off'}`);
+    return res.json(ok({ notices: stmts.allNotices.all() }));
+  }
+  const parsed = readNotice({ ...existing, ...req.body });
+  if (parsed.error) return res.status(400).json({ ok: false, error: parsed.error });
+  stmts.updateNotice.run(id, parsed.value);
+  logEvent('admin-notice-edit', null, getIp(req), id);
+  res.json(ok({ notices: stmts.allNotices.all() }));
+});
+
+app.delete('/admin/api/notices/:id', requireAdmin, (req, res) => {
+  const r = stmts.delNotice.run(String(req.params.id || ''));
+  if (!r.changes) return res.status(404).json({ ok: false, error: 'unknown notice' });
+  logEvent('admin-notice-delete', null, getIp(req), String(req.params.id));
+  res.json(ok({ notices: stmts.allNotices.all() }));
 });
 
 // --- the device ledger: what the hardware lock actually holds ---
@@ -613,12 +960,29 @@ app.post('/admin/api/devices/:id/reset-trial', requireAdmin, (req, res) => {
   res.json(ok({ changed: r.changes }));
 });
 
+// Take one machine off its key. The key still points at a "primary" device for
+// the admin table and for licences bound before the ledger existed, so when the
+// machine being removed is that one, another of the key's machines takes its
+// place — removing a customer's second PC must not disturb their first.
+function detachDeviceFromKey(deviceId) {
+  const dev = stmts.getDevice.get(deviceId);
+  if (!dev || !dev.key) return dev;
+  const row = stmts.findKey.get(dev.key);
+  if (!row || row.device_id !== deviceId) return dev;
+  const others = stmts.devicesForKey.all(dev.key).filter((d) => d.deviceId !== deviceId);
+  if (others.length) {
+    stmts.bindDevice.run(others[0].deviceId, others[0].name || '', row.activated_at || Date.now(), dev.key);
+  } else {
+    stmts.resetDevice.run(dev.key);
+  }
+  return dev;
+}
+
 // Free a machine so a different account can register on it. Keeps the trial
 // count, so unbinding is not a way to farm new trials.
 app.post('/admin/api/devices/:id/unbind', requireAdmin, (req, res) => {
   const id = String(req.params.id || '').trim();
-  const dev = stmts.getDevice.get(id);
-  if (dev && dev.key) stmts.resetDevice.run(dev.key);
+  const dev = detachDeviceFromKey(id);
   const r = stmts.clearDeviceBinding.run(id);
   logEvent('admin-device-unbind', dev?.key || null, getIp(req), id.slice(0, 16));
   res.json(ok({ changed: r.changes }));
@@ -626,8 +990,7 @@ app.post('/admin/api/devices/:id/unbind', requireAdmin, (req, res) => {
 
 app.delete('/admin/api/devices/:id', requireAdmin, (req, res) => {
   const id = String(req.params.id || '').trim();
-  const dev = stmts.getDevice.get(id);
-  if (dev && dev.key) stmts.resetDevice.run(dev.key);
+  const dev = detachDeviceFromKey(id);
   const r = stmts.deleteDevice.run(id);
   logEvent('admin-device-delete', dev?.key || null, getIp(req), id.slice(0, 16));
   res.json(ok({ changed: r.changes }));
@@ -668,6 +1031,26 @@ app.patch('/admin/api/keys/:key', requireAdmin, (req, res) => {
   if (email && !emailOk(email)) return res.status(400).json({ ok: false, error: 'invalid email' });
   if (expiresAt === undefined) return res.status(400).json({ ok: false, error: 'invalid expiry date' });
   const r = stmts.updateKey.run(key, email || null, note || null, expiresAt || null);
+  if (req.body?.deviceLimit !== undefined) {
+    const raw = req.body.deviceLimit;
+    // Empty means "follow the plan", which is what most keys should do.
+    if (raw === '' || raw === null) {
+      stmts.setKeyDeviceLimit.run(key, null);
+    } else {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 1 || n > 20) {
+        return res.status(400).json({ ok: false, error: 'devices must be between 1 and 20, or blank to follow the plan' });
+      }
+      stmts.setKeyDeviceLimit.run(key, n);
+    }
+  }
+  if (req.body?.plan !== undefined) {
+    const plan = String(req.body.plan || '').trim();
+    if (plan && !stmts.allPlans.all().some((p) => p.id === plan)) {
+      return res.status(400).json({ ok: false, error: 'unknown plan' });
+    }
+    stmts.setKeyPlan.run(key, plan || null);
+  }
   // Keep the hardware ledger in step: changing someone's email in the panel is
   // the supported way to move an account, so the bound device must follow it or
   // the old address would keep the lock.
