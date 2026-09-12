@@ -2,6 +2,9 @@
 name = "velox-license"
 version = "0.1.0"
 edition = "2021"
+# Two binaries live here: the service, and the one-off import tool. Naming the
+# default keeps `cargo run` unambiguous.
+default-run = "velox-license"
 description = "Velox Downloader licence server - keys, devices, plans, notices and gated extraction."
 
 [dependencies]
