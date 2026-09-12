@@ -12,7 +12,8 @@
     "engine:smoke": "node engine/smoke.js",
     "engine:bench": "node engine/bench.js",
     "prebuild": "node scripts/build-engine.js && node scripts/brand-engine.js",
-    "engine:brand": "node scripts/brand-engine.js"
+    "engine:brand": "node scripts/brand-engine.js",
+    "test": "node test/run.js"
   },
   "keywords": [
     "video",

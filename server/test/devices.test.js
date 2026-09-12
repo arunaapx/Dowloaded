@@ -198,6 +198,33 @@ function finish(code) {
     'the keys table knows how many machines each key is on',
     `${shown.devices_used}/${shown.devices_limit}`);
 
+  // --- 11. reinstalling the app must not cost a device slot ------------------
+  //
+  // A reinstall wipes the app's folder, so the licence file is gone and the
+  // customer activates again. The machine has not changed — the id comes from
+  // the board — so the server must recognise it rather than counting it as a
+  // second PC and refusing. Getting this wrong turns every reinstall into a
+  // support ticket.
+  const kReinstall = (await call('/admin/api/keys', { method: 'POST', body: { email: 'reinstall@example.com', days: 30 } })).body.key;
+  // Pinned to one machine, so this check does not depend on whatever the
+  // default was left at earlier in the suite.
+  await call(`/admin/api/keys/${kReinstall}`, { method: 'PATCH', body: { email: 'reinstall@example.com', deviceLimit: 1 } });
+  const first = await activate(kReinstall, 'SAME-BOARD');
+  check(first.status === 200, 'the customer activates on their PC');
+  check(first.body.profile.devices.used === 1 && first.body.profile.devices.limit === 1,
+    'which uses their one device', JSON.stringify(first.body.profile.devices));
+
+  // The app is uninstalled and installed again: everything it wrote is gone,
+  // and it asks the server afresh with the same hardware id.
+  const again = await activate(kReinstall, 'SAME-BOARD');
+  check(again.status === 200, 'after a reinstall the same key activates again on the same PC', again.body?.error);
+  check(again.body.profile.devices.used === 1,
+    'and it is still one device, not two', JSON.stringify(again.body?.profile?.devices));
+
+  const elsewhere = await activate(kReinstall, 'OTHER-BOARD');
+  check(elsewhere.status === 409,
+    'while a genuinely different PC is still refused', elsewhere.body?.error);
+
   console.log(`\n${failures ? failures + ' CHECK(S) FAILED' : 'ALL CHECKS PASSED'}`);
   finish(failures ? 1 : 0);
 })().catch((e) => {
