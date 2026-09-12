@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { checkBinaries: coreCheckBinaries, startDownload, resolveBinary } = require('./core/downloader');
 const { probe, search: ytSearch, listExtractors, playlistEntries } = require('./core/extractor');
 const torrentManager = require('./core/torrent-manager');
+const { hardwareId } = require('./core/hardware-id');
 const fitGirlScraper = require('./core/scraper-fitgirl');
 const one337xScraper = require('./core/scraper-1337x');
 const softwareScraper = require('./core/scraper-software');
@@ -228,7 +229,26 @@ function writeLicenseFromServer(existing, payload, fallbackKey, deviceIdValue) {
   return next;
 }
 
+// One PowerShell start-up is enough for the life of the process.
+let hardwareIdCache = null;
+
 function deviceId() {
+  // The machine itself comes first, ahead of anything this app has written.
+  //
+  // Two holes close with that ordering. A trial could be farmed by deleting
+  // userData — the identity lived in a random salt in there, so the same PC
+  // came back looking new. And a licence could be shared by copying
+  // license.json to a second machine, which then reported the first machine's
+  // id and passed as the same device. SMBIOS answers for the board, so neither
+  // works: the identity survives deleting every file this app owns, and it
+  // does not travel with a copied file.
+  if (hardwareIdCache === null) {
+    try { hardwareIdCache = hardwareId(); } catch { hardwareIdCache = ''; }
+  }
+  if (hardwareIdCache) return hardwareIdCache;
+
+  // A machine that will not identify itself (an odd OEM, a locked-down box)
+  // still has to be able to run the app, so the old behaviour stays underneath.
   const lic = readLicense();
   if (lic && lic.deviceId) return lic.deviceId;
   // Stable per-install hash of hostname + username + a random salt persisted in userData.
