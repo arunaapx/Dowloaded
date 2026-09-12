@@ -5,6 +5,15 @@ server/data/
 bin/yt-dlp.exe
 bin/ffmpeg.exe
 bin/*.exe
+# yt-dlp's onedir build: the exe is a launcher and _internal holds the
+# ~24MB of Python it needs beside it. Downloaded, not committed.
+bin/_internal/
+
+# Rust build output for the native engine. The source is committed; the
+# ~2MB DLL is built with `npm run engine:build`, or dropped into bin/ by CI.
+engine/target/
+bin/velox_engine.dll
+
 .DS_Store
 .claude/
 
@@ -13,3 +22,9 @@ bin/*.exe
 server/.env
 *.env
 !*.env.example
+
+# Server details for npm run release — local only
+release.config.json
+
+# Rust build output for the licence server port
+server-rs/target/
