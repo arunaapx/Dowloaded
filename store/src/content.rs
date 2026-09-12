@@ -35,9 +35,48 @@ pub fn default_content() -> Value {
                 { "label": "How It Works", "href": "#how" },
                 { "label": "Extension", "href": "#extension" },
                 { "label": "Pricing", "href": "#pricing" },
+                { "label": "Help", "href": "#help" },
                 { "label": "FAQ", "href": "#faq" }
             ],
             "cta": "Download Free"
+        },
+        // The help centre. The app's Get help button opens #help, so this is
+        // where a stuck customer lands - which is why it is editable here and
+        // not compiled into the page: an answer can go up while someone is
+        // still waiting for it.
+        //
+        // An article shows a picture or a video, never both: whichever is
+        // filled in wins, and a video's thumbnail comes from YouTube so a guide
+        // looks finished without anyone making artwork for it.
+        "help": {
+            "heading": "Help Center",
+            "sub": "Short answers to the things people ask most. Every guide takes a minute.",
+            "articles": [
+                {
+                    "title": "Activating Velox on your PC",
+                    "description": "Enter your email twice, tick the box, and the key arrives in your inbox. The licence locks to this computer, so use the machine you will actually download on.",
+                    "image": "",
+                    "video": ""
+                },
+                {
+                    "title": "Why my key will not work on a second computer",
+                    "description": "A licence is tied to one machine's hardware. Reinstalling Windows or the app is fine - the same PC stays the same PC. A new motherboard counts as a new machine; message us and we will move it.",
+                    "image": "",
+                    "video": ""
+                },
+                {
+                    "title": "Downloading a whole playlist",
+                    "description": "Paste the playlist link, or search and press Open playlist. Pick the episodes you want, choose video or MP3, and each one is queued as its own download.",
+                    "image": "",
+                    "video": ""
+                },
+                {
+                    "title": "Torrents: picking files before they download",
+                    "description": "Add a magnet or a .torrent file and Velox reads the file list first. Tick only what you want - language packs and extras can stay behind - then press Start download.",
+                    "image": "",
+                    "video": ""
+                }
+            ]
         },
         "hero": {
             "headline": "Download Any Video in 1-Click.",

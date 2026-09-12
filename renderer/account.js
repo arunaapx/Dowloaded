@@ -8,7 +8,12 @@
   if (!window.api || !window.api.accountInfo) return;
 
   const $ = (id) => document.getElementById(id);
-  let current = { profile: null, plans: [], notices: [], storeUrl: '' };
+  let current = { profile: null, plans: [], notices: [], storeUrl: '', helpUrl: '' };
+
+  // Falls back to the store's own help anchor, so the button still goes
+  // somewhere useful before the first heartbeat has answered.
+  const helpUrl = () =>
+    current.helpUrl || (current.storeUrl ? current.storeUrl.replace(/\/+$/, '') + '/#help' : '');
 
   // ---- small helpers -------------------------------------------------------
 
@@ -262,5 +267,15 @@
   const lockStoreBtn = $('lkStoreBtn');
   if (lockStoreBtn) {
     lockStoreBtn.addEventListener('click', () => window.api.openStore(current.storeUrl));
+  }
+
+  // Get help, from the two places someone needs it: locked out at the door,
+  // and mid-download inside the app.
+  for (const id of ['lkHelpBtn', 'helpBtn']) {
+    const btn = $(id);
+    if (btn) btn.addEventListener('click', () => {
+      const url = helpUrl();
+      if (url) window.api.openStore(url);
+    });
   }
 })();

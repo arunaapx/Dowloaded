@@ -2579,3 +2579,11 @@ body.light {
 }
 .lock-ack input { margin: 2px 0 0; accent-color: var(--accent); flex-shrink: 0; }
 .lock-btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+
+/* Two ways out of the lock screen, side by side: buy, or ask. */
+.lock-links { display: flex; gap: 8px; margin-top: 12px; }
+.lock-links .ghost-btn { flex: 1; }
+
+/* Get help sits with the tabs but is not one — it opens the site. */
+#helpBtn { cursor: pointer; }

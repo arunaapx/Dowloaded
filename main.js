@@ -45,6 +45,10 @@ const HEARTBEAT_INTERVAL_MINUTES = Math.max(1, parseInt(process.env.HEARTBEAT_IN
 // staging site instead of taking a customer to the real checkout.
 const STORE_URL = process.env.VELOX_STORE_URL || 'https://veloxdownloader.prolanka.online/';
 
+// Where Get help goes. The guides live on the site because an answer can be
+// published there while someone is still stuck — the app would need a release.
+const HELP_URL = process.env.VELOX_HELP_URL || STORE_URL.replace(/\/+$/, '') + '/#help';
+
 // Windows names a notification after the app's user-model id, and Electron's
 // default is its own — which is why every toast this app raised said
 // "electron.app.Electron" instead of Velox Downloader. This has to match the
@@ -460,6 +464,7 @@ function accountInfo() {
     plans: account.plans,
     notices: visibleNotices(),
     storeUrl: STORE_URL,
+    helpUrl: HELP_URL,
     updatedAt: account.updatedAt,
   };
 }

@@ -440,6 +440,30 @@ function Editor({ token, onSignOut }) {
               <div className="row"><Chips c={c} set={set} path={['trust', 'badges']} label="Badges (one per line)" /></div>
             </div>
 
+            <div className="admin-card">
+              <h3>Help Center</h3>
+              <p className="hint">
+                What the app's Get help button opens. Each guide shows a picture or a
+                YouTube video — fill in whichever you have; the video brings its own
+                thumbnail, so a guide with a video needs no image at all.
+              </p>
+              <div className="row">
+                <Text c={c} set={set} path={['help', 'heading']} label="Heading" />
+                <Text c={c} set={set} path={['help', 'sub']} label="Sub-heading" />
+              </div>
+            </div>
+
+            <List c={c} set={set} path={['help', 'articles']} label="Help articles"
+              hint="Paste any YouTube link — a watch URL, a share link, an embed or a short all work."
+              tag={(item) => item.title || 'Untitled'}
+              blank={{ title: '', description: '', image: '', video: '' }}
+              fields={[
+                { key: 'title', label: 'Title' },
+                { key: 'description', label: 'Description', area: true },
+                { key: 'video', label: 'YouTube link (optional)' },
+                { key: 'image', label: 'Image URL (used when there is no video)' },
+              ]} />
+
             <List c={c} set={set} path={['faq']} label="FAQ"
               fields={[{ key: 'q', label: 'Question' }, { key: 'a', label: 'Answer', area: true }]}
               blank={{ q: '', a: '' }} tag={(i) => i.q || 'question'} />
