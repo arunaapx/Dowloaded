@@ -688,7 +688,30 @@
         <label class="lock-label">Email
           <input type="email" id="lkEmail" placeholder="you@example.com" autocomplete="email" />
         </label>
-        <button class="primary-btn lock-btn" id="lkEmailBtn" type="button">SEND ME A KEY</button>
+        <!-- Typed twice on purpose. The key goes to this address and the licence
+             is locked to this computer, so a typo is not a small mistake: it
+             sends someone else's key to an address nobody owns, and the machine
+             is spent. -->
+        <label class="lock-label">Confirm email
+          <input type="email" id="lkEmail2" placeholder="Type it again" autocomplete="off" spellcheck="false" />
+        </label>
+
+        <div class="lock-warn">
+          <div class="lock-warn-title">This key will work on this computer only</div>
+          <p>
+            Your licence is locked to this machine's hardware. The same email
+            cannot be used to activate a second computer — not another laptop,
+            not after moving to a new PC. Changing the motherboard also counts
+            as a new machine.
+          </p>
+          <p>Use the address you actually own. The key is sent there and cannot be moved later without contacting support.</p>
+          <label class="lock-ack">
+            <input type="checkbox" id="lkAgree" />
+            <span>I understand this key is tied to this computer</span>
+          </label>
+        </div>
+
+        <button class="primary-btn lock-btn" id="lkEmailBtn" type="button" disabled>SEND ME A KEY</button>
         <div class="lock-msg" id="lkEmailMsg"></div>
       </div>
 

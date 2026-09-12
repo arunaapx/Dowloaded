@@ -8,6 +8,7 @@ const { checkBinaries: coreCheckBinaries, startDownload, resolveBinary } = requi
 const { probe, search: ytSearch, listExtractors, playlistEntries } = require('./core/extractor');
 const torrentManager = require('./core/torrent-manager');
 const { hardwareId } = require('./core/hardware-id');
+const licenseStore = require('./core/license-store');
 const fitGirlScraper = require('./core/scraper-fitgirl');
 const one337xScraper = require('./core/scraper-1337x');
 const softwareScraper = require('./core/scraper-software');
@@ -60,7 +61,9 @@ const LICENSE_SERVER_URL =
 const LICENSE_BYPASS = process.env.LICENSE_BYPASS === '1';
 
 const HISTORY_PATH = () => path.join(app.getPath('userData'), 'history.json');
-const LICENSE_PATH = () => path.join(app.getPath('userData'), 'license.json');
+// The licence no longer lives at a fixed, readable path — see
+// core/license-store.js. This is kept only so the old file can be cleaned up.
+const LEGACY_LICENSE_PATH = () => path.join(app.getPath('userData'), 'license.json');
 const COOKIE_PATH = () => path.join(app.getPath('userData'), 'cookies.txt');
 const YT_SIGNIN_PATH = () => path.join(app.getPath('userData'), 'yt-signin.json');
 const SPEED_PATH = () => path.join(app.getPath('userData'), 'speed-limit.json');
@@ -163,21 +166,25 @@ async function refreshCookiesForYtdlp() {
 
 // ---------- license helpers ----------
 
+// The licence is stored encrypted, under a name derived from this machine, so
+// that it cannot be found by looking for it, read, edited, or carried to a
+// second PC. machineSeed() is the hardware id; a machine that will not identify
+// itself still gets an encrypted file, just not one bound to it.
+function machineSeed() {
+  if (hardwareIdCache === null) {
+    try { hardwareIdCache = hardwareId(); } catch { hardwareIdCache = ''; }
+  }
+  return hardwareIdCache;
+}
+
 function readLicense() {
-  try {
-    if (!fs.existsSync(LICENSE_PATH())) return null;
-    return JSON.parse(fs.readFileSync(LICENSE_PATH(), 'utf-8'));
-  } catch { return null; }
+  return licenseStore.read(app.getPath('userData'), machineSeed());
 }
 function writeLicense(obj) {
-  try {
-    fs.mkdirSync(path.dirname(LICENSE_PATH()), { recursive: true });
-    fs.writeFileSync(LICENSE_PATH(), JSON.stringify(obj, null, 2));
-    return true;
-  } catch { return false; }
+  return licenseStore.write(app.getPath('userData'), machineSeed(), obj);
 }
 function clearLicense() {
-  try { fs.unlinkSync(LICENSE_PATH()); } catch {}
+  licenseStore.clear(app.getPath('userData'), machineSeed());
 }
 
 function normalizeLicenseKey(key) {
@@ -242,10 +249,8 @@ function deviceId() {
   // id and passed as the same device. SMBIOS answers for the board, so neither
   // works: the identity survives deleting every file this app owns, and it
   // does not travel with a copied file.
-  if (hardwareIdCache === null) {
-    try { hardwareIdCache = hardwareId(); } catch { hardwareIdCache = ''; }
-  }
-  if (hardwareIdCache) return hardwareIdCache;
+  const hw = machineSeed();
+  if (hw) return hw;
 
   // A machine that will not identify itself (an odd OEM, a locked-down box)
   // still has to be able to run the app, so the old behaviour stays underneath.
