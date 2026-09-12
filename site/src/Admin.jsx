@@ -47,6 +47,86 @@ export default function Admin() {
 
 /* ------------------------------------------------------------------ login */
 
+/* The download counter shown on the home page.
+   -------------------------------------------------------------------------
+   It is a tally of clicks on the download button, and it needs correcting for
+   ordinary reasons: clicks made while testing the site, a figure carried over
+   from before the counter existed, or a restore that lost it. */
+function DownloadCounter({ token }) {
+  const [current, setCurrent] = React.useState(null);
+  const [value, setValue] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [note, setNote] = React.useState(null);
+
+  const load = React.useCallback(() => {
+    api.stats()
+      .then((s) => {
+        const n = Number(s && s.downloads) || 0;
+        setCurrent(n);
+        setValue(String(n));
+      })
+      .catch(() => setCurrent(null));
+  }, []);
+
+  React.useEffect(load, [load]);
+
+  const save = async () => {
+    const n = Math.floor(Number(value));
+    if (!Number.isFinite(n) || n < 0) {
+      setNote({ kind: 'bad', text: 'Enter a whole number, zero or more.' });
+      return;
+    }
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await api.adminSetDownloads(token, n);
+      setCurrent(r.downloads);
+      setNote({ kind: '', text: `Saved. The site now shows ${r.downloads.toLocaleString()} (was ${Number(r.previous).toLocaleString()}).` });
+    } catch (e) {
+      setNote({ kind: 'bad', text: e.message || 'Could not save.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="admin-card">
+      <h3>Download counter</h3>
+      <p className="hint">
+        The number under the hero. It counts clicks on the download button and
+        rises on its own; set it here to correct test clicks or carry over a
+        figure from before this counter existed.
+      </p>
+      <div className="row row-2">
+        <div className="field-wrap">
+          <label className="flabel">Live count</label>
+          <div className="mono" style={{ fontSize: 22, padding: '6px 0' }}>
+            {current === null ? '—' : current.toLocaleString()}
+          </div>
+        </div>
+        <div className="field-wrap">
+          <label className="flabel">Set it to</label>
+          <input
+            className="field mono"
+            type="number"
+            min="0"
+            step="1"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 12 }}>
+        <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : 'Save count'}
+        </button>
+        <button className="mini" onClick={load} disabled={busy}>Refresh</button>
+      </div>
+      {note && <div className={`notice ${note.kind}`} style={{ marginTop: 12 }}>{note.text}</div>}
+    </div>
+  );
+}
+
 function Login({ onIn }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -250,6 +330,8 @@ function Editor({ token, onSignOut }) {
           </div>
         ) : (
           <>
+            <DownloadCounter token={token} />
+
             <div className="admin-card">
               <h3>Brand and navigation</h3>
               <p className="hint">The sticky header: name, version badge, and the links across the middle.</p>

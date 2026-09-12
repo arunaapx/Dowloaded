@@ -1,0 +1,660 @@
+/* Landing page.
+   ---------------------------------------------------------------------------
+   Loaded after styles.css, which the admin panel also uses. The token NAMES are
+   kept identical so the admin stays coherent while the public site is retuned;
+   only the values move.
+
+   The one animation that matters here is the hero: a file splitting into
+   parallel lanes, all filling at once, then merging back. That is literally
+   what the downloader does, so the motion is the product rather than
+   decoration - and a single lane crawling beside eight is the honest way to
+   show why it is quick. */
+
+:root {
+  --ink-0:    #04070D;
+  --ink-1:    #080D16;
+  --ink-2:    #0D1422;
+  --ink-3:    #131C2D;
+  --line:     #1D2839;
+  --line-2:   #2A3A52;
+
+  --text:       #E8EFF9;
+  --text-dim:   #93A3BA;
+  --text-faint: #61718A;
+
+  --accent:    #2E8BFF;
+  --accent-2:  #19D9C6;
+  --on-accent: #04070D;
+  --success:   #34D399;
+  --warning:   #FBBF24;
+  --danger:    #F87171;
+
+  --maxw: 1180px;
+  --r-sm: 8px;
+  --r-md: 13px;
+  --r-lg: 20px;
+  --r-pill: 999px;
+
+  --font-display: "Archivo", "Segoe UI", system-ui, sans-serif;
+  --font-body:    "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono:    "IBM Plex Mono", ui-monospace, Consolas, monospace;
+
+  --glass:      rgba(255, 255, 255, .035);
+  --glass-line: rgba(255, 255, 255, .085);
+  --glow:       0 0 40px -8px rgba(46, 139, 255, .55);
+  --lift:       0 18px 44px -24px rgba(0, 0, 0, .9);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ink-0);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+.wrap { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 22px; }
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing: -.025em; margin: 0; text-wrap: balance; }
+
+a { color: inherit; text-decoration: none; }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: .7rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 13px 24px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .18s cubic-bezier(.2, .8, .3, 1), box-shadow .22s ease, background .18s ease, border-color .18s ease;
+}
+.btn:active { transform: translateY(1px) scale(.995); }
+.btn:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; }
+
+.btn.primary {
+  color: var(--on-accent);
+  background: linear-gradient(100deg, var(--accent-2), var(--accent));
+  box-shadow: var(--glow);
+}
+.btn.primary:hover { transform: translateY(-2px); box-shadow: 0 0 54px -6px rgba(46, 139, 255, .8); }
+
+.btn.ghost { color: var(--text); background: var(--glass); border-color: var(--glass-line); }
+.btn.ghost:hover { background: rgba(255, 255, 255, .07); border-color: var(--line-2); transform: translateY(-2px); }
+
+.btn.sm { padding: 9px 17px; font-size: 13.5px; }
+.btn.wide { width: 100%; }
+
+/* -------------------------------------------------------------------- nav */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: rgba(4, 7, 13, .72);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid transparent;
+  transition: border-color .3s ease, background .3s ease;
+}
+.nav.stuck { border-bottom-color: var(--line); background: rgba(4, 7, 13, .9); }
+.nav-inner { display: flex; align-items: center; gap: 26px; height: 68px; }
+
+.logo { display: flex; align-items: center; gap: 11px; }
+.logo-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: var(--on-accent);
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+}
+.logo-mark svg { width: 19px; height: 19px; }
+.logo-name { font-family: var(--font-display); font-weight: 700; font-size: 15.5px; letter-spacing: -.02em; }
+.logo-sub { font-size: 11px; color: var(--text-faint); margin-top: -2px; }
+
+.nav-links { display: flex; gap: 24px; margin-left: auto; font-size: 14.2px; color: var(--text-dim); }
+.nav-links a { position: relative; transition: color .18s ease; }
+.nav-links a:hover { color: var(--text); }
+.nav-links a::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -6px;
+  height: 1.5px;
+  background: var(--accent-2);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .26s cubic-bezier(.2, .8, .3, 1);
+}
+.nav-links a:hover::after { transform: scaleX(1); }
+
+.nav-right { display: flex; align-items: center; gap: 13px; }
+.os-badge {
+  font-family: var(--font-mono);
+  font-size: 11.4px;
+  color: var(--text-dim);
+  padding: 5px 11px;
+  border-radius: var(--r-pill);
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------- hero */
+
+.hero { position: relative; padding: 76px 0 96px; overflow: hidden; }
+
+/* A wash behind the hero rather than a hard gradient block: the interest is
+   meant to come from the motion, not from a coloured rectangle. */
+.hero::before {
+  content: "";
+  position: absolute;
+  top: -30%;
+  left: 50%;
+  width: 1100px;
+  height: 700px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, rgba(46, 139, 255, .17), transparent 62%);
+  pointer-events: none;
+}
+
+.hero-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr);
+  gap: 54px;
+  align-items: center;
+}
+
+.hero h1 {
+  font-size: clamp(2.6rem, 5.6vw, 4.15rem);
+  line-height: 1.02;
+  margin: 18px 0 0;
+}
+.hero h1 .accent {
+  background: linear-gradient(100deg, var(--accent-2), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero-sub { font-size: 1.08rem; color: var(--text-dim); margin: 20px 0 0; max-width: 34rem; }
+.hero-cta { display: flex; flex-wrap: wrap; gap: 13px; margin-top: 30px; }
+.hero-micro { margin-top: 16px; font-size: 13px; color: var(--text-faint); font-family: var(--font-mono); }
+
+.hero-stats { display: flex; flex-wrap: wrap; gap: 0 34px; margin-top: 34px; padding-top: 22px; border-top: 1px solid var(--line); }
+.hstat-num { font-family: var(--font-display); font-weight: 700; font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.hstat-label { font-size: 12.2px; color: var(--text-faint); }
+
+/* ----------------------------------------------- the parallel-lane machine */
+
+.machine {
+  position: relative;
+  padding: 20px;
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--ink-2), var(--ink-1));
+  border: 1px solid var(--line);
+  box-shadow: var(--lift);
+}
+.machine-top {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line-2); }
+.dot.live { background: var(--success); box-shadow: 0 0 10px var(--success); }
+.machine-title { font-family: var(--font-mono); font-size: 11.6px; color: var(--text-dim); margin-left: 4px; }
+.machine-speed {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12.6px;
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.lanes { display: flex; flex-direction: column; gap: 9px; }
+
+.lane { display: flex; align-items: center; gap: 11px; }
+.lane-tag {
+  font-family: var(--font-mono);
+  font-size: 10.4px;
+  color: var(--text-faint);
+  width: 3.1rem;
+  flex: none;
+}
+.lane-track {
+  position: relative;
+  flex: 1;
+  height: 9px;
+  border-radius: var(--r-pill);
+  background: var(--ink-3);
+  overflow: hidden;
+}
+.lane-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  animation: laneFill 3.4s cubic-bezier(.35, .1, .2, 1) infinite;
+}
+/* A sheen that runs along each filling lane, so the bar reads as moving even
+   at the moments its width is barely changing. */
+.lane-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent);
+  transform: translateX(-100%);
+  animation: sheen 1.15s linear infinite;
+}
+.lane:nth-child(1) .lane-fill { animation-delay: 0s; }
+.lane:nth-child(2) .lane-fill { animation-delay: .08s; }
+.lane:nth-child(3) .lane-fill { animation-delay: .16s; }
+.lane:nth-child(4) .lane-fill { animation-delay: .24s; }
+.lane:nth-child(5) .lane-fill { animation-delay: .32s; }
+.lane:nth-child(6) .lane-fill { animation-delay: .40s; }
+.lane:nth-child(7) .lane-fill { animation-delay: .48s; }
+.lane:nth-child(8) .lane-fill { animation-delay: .56s; }
+
+@keyframes laneFill {
+  0%   { width: 0; }
+  62%  { width: 100%; }
+  100% { width: 100%; }
+}
+@keyframes sheen {
+  to { transform: translateX(100%); }
+}
+
+/* The comparison: one lane, same file, at the speed a single connection gives.
+   Measured at 0.92 MB/s against 5.68 on eight, so this is not a caricature. */
+.machine-compare { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line); }
+.compare-label { font-family: var(--font-mono); font-size: 10.6px; color: var(--text-faint); margin-bottom: 8px; }
+.lane.slow .lane-fill {
+  background: var(--line-2);
+  animation: laneFillSlow 3.4s linear infinite;
+}
+.lane.slow .lane-fill::after { display: none; }
+@keyframes laneFillSlow {
+  0%   { width: 0; }
+  100% { width: 26%; }
+}
+
+.machine-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 12.4px;
+  color: var(--text-dim);
+}
+.merge-pill {
+  font-family: var(--font-mono);
+  font-size: 10.6px;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  color: var(--success);
+  background: rgba(52, 211, 153, .12);
+  border: 1px solid rgba(52, 211, 153, .3);
+}
+
+/* --------------------------------------------------------------- sections */
+
+.section { padding: 92px 0; position: relative; }
+.section.alt { background: linear-gradient(180deg, transparent, var(--ink-1) 12%, var(--ink-1) 88%, transparent); }
+
+.section-head { max-width: 40rem; margin-bottom: 46px; }
+.section-head h2 { font-size: clamp(1.9rem, 3.6vw, 2.7rem); margin: 12px 0 0; }
+.section-head p { color: var(--text-dim); margin: 14px 0 0; font-size: 1.02rem; }
+
+/* --------------------------------------------------------- feature blocks */
+
+.feat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 16px; }
+
+.feat {
+  position: relative;
+  padding: 24px 22px;
+  border-radius: var(--r-md);
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  transition: transform .28s cubic-bezier(.2, .8, .3, 1), border-color .28s ease, background .28s ease;
+}
+.feat:hover { transform: translateY(-4px); border-color: var(--line-2); background: var(--ink-3); }
+.feat-ico {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  margin-bottom: 15px;
+  color: var(--accent-2);
+  background: rgba(25, 217, 198, .09);
+  border: 1px solid rgba(25, 217, 198, .2);
+}
+.feat h3 { font-size: 1.04rem; margin-bottom: 7px; }
+.feat p { color: var(--text-dim); font-size: 14.2px; margin: 0; }
+.feat .tag-new {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  font-family: var(--font-mono);
+  font-size: 9.6px;
+  letter-spacing: .1em;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  color: var(--accent-2);
+  background: rgba(25, 217, 198, .12);
+  border: 1px solid rgba(25, 217, 198, .28);
+}
+
+/* ------------------------------------------------------------- speed band */
+
+.band {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.band-cell { padding: 26px 22px; background: var(--ink-1); }
+.band-num {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 2.1rem;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(100deg, var(--accent-2), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.band-label { font-size: 13.2px; color: var(--text-dim); margin-top: 4px; }
+.band-note { font-size: 11.6px; color: var(--text-faint); margin-top: 7px; font-family: var(--font-mono); }
+
+/* ------------------------------------------------------------------ steps */
+
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; counter-reset: step; }
+.step { position: relative; padding-top: 22px; border-top: 2px solid var(--line); transition: border-color .3s ease; }
+.step:hover { border-top-color: var(--accent); }
+.step-n {
+  font-family: var(--font-mono);
+  font-size: 11.4px;
+  color: var(--accent-2);
+  margin-bottom: 9px;
+}
+.step h3 { font-size: 1.02rem; margin-bottom: 6px; }
+.step p { color: var(--text-dim); font-size: 14px; margin: 0; }
+
+/* ------------------------------------------------------------ site chips */
+
+.chips { display: flex; flex-wrap: wrap; gap: 9px; }
+.chip {
+  font-size: 13.2px;
+  color: var(--text-dim);
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  transition: color .2s ease, border-color .2s ease, transform .2s ease;
+}
+.chip:hover { color: var(--text); border-color: var(--line-2); transform: translateY(-2px); }
+.chip.more { color: var(--accent-2); border-color: rgba(25, 217, 198, .3); }
+
+/* ---------------------------------------------------------------- pricing */
+
+.pricing-wrap { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+
+.compare-scroll { overflow-x: auto; border-radius: var(--r-md); border: 1px solid var(--line); }
+table.cmp { width: 100%; min-width: 30rem; border-collapse: collapse; font-size: 14.2px; background: var(--ink-1); }
+table.cmp th, table.cmp td { text-align: left; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+table.cmp thead th { font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); font-weight: 500; }
+table.cmp th.pro, table.cmp td.pro { color: var(--text); background: rgba(46, 139, 255, .05); }
+table.cmp tbody tr:last-child td { border-bottom: 0; }
+table.cmp td { color: var(--text-dim); }
+
+.buy-card {
+  padding: 28px 24px;
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--ink-2), var(--ink-1));
+  border: 1px solid var(--line-2);
+  box-shadow: var(--lift);
+}
+.price-tag { display: flex; align-items: baseline; gap: 8px; }
+.price-amount { font-family: var(--font-display); font-weight: 700; font-size: 2.5rem; letter-spacing: -.03em; }
+.price-per { color: var(--text-faint); font-size: 13.6px; }
+
+/* -------------------------------------------------------------------- faq */
+
+.faq-list { display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.faq-item { background: var(--ink-1); }
+.faq-q {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 18px 20px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15.2px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background .2s ease;
+}
+.faq-q:hover { background: var(--ink-2); }
+.faq-q .caret { margin-left: auto; color: var(--text-faint); transition: transform .3s cubic-bezier(.2, .8, .3, 1); flex: none; }
+.faq-item.open .faq-q .caret { transform: rotate(180deg); color: var(--accent-2); }
+/* Grid rows animate to auto height, which a max-height guess cannot do without
+   either clipping a long answer or snapping open a short one. */
+.faq-a { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .32s cubic-bezier(.2, .8, .3, 1); }
+.faq-item.open .faq-a { grid-template-rows: 1fr; }
+.faq-a > div { overflow: hidden; }
+.faq-a p { margin: 0; padding: 0 20px 19px; color: var(--text-dim); font-size: 14.4px; }
+
+/* ----------------------------------------------------------------- footer */
+
+.footer { padding: 46px 0 34px; border-top: 1px solid var(--line); background: var(--ink-1); }
+.footer-inner { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; }
+.footer p { margin: 0; color: var(--text-faint); font-size: 13.4px; }
+.footer-links { display: flex; gap: 20px; margin-left: auto; font-size: 13.4px; color: var(--text-dim); }
+.footer-links a:hover { color: var(--text); }
+
+/* ------------------------------------------------------- scroll reveal ---
+   Content is visible by default. JS opts an element in by adding .will-reveal,
+   then .revealed when it scrolls into view, so a failed script or a blocked
+   bundle leaves a readable page rather than an empty one. */
+.will-reveal { opacity: 0; transform: translateY(18px); }
+.revealed {
+  opacity: 1;
+  transform: none;
+  transition: opacity .6s ease, transform .6s cubic-bezier(.2, .8, .3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .will-reveal { opacity: 1; transform: none; }
+  .lane-fill, .lane-fill::after, .lane.slow .lane-fill { animation: none; width: 68%; }
+  .lane.slow .lane-fill { width: 18%; }
+  * { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
+
+@media (max-width: 900px) {
+  .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+  .pricing-wrap { grid-template-columns: 1fr; }
+  .nav-links { display: none; }
+}
+@media (max-width: 560px) {
+  .section { padding: 66px 0; }
+  .hero { padding: 52px 0 72px; }
+  .os-badge { display: none; }
+}
+
+/* The live download counter. The dot says the figure is being re-read; the
+   flash fires only when it actually changes, so it means something. */
+.live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 9px;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 0 rgba(52, 211, 153, .6);
+  animation: livePulse 2.4s ease-out infinite;
+}
+@keyframes livePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(52, 211, 153, .55); }
+  70%  { box-shadow: 0 0 0 9px rgba(52, 211, 153, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+}
+.count-bump { animation: countBump .7s cubic-bezier(.2, .8, .3, 1); }
+@keyframes countBump {
+  0%   { color: var(--text); }
+  22%  { color: var(--accent-2); transform: translateY(-2px); }
+  100% { color: var(--text); transform: none; }
+}
+.hstat-num > span { display: inline-block; transition: color .3s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .live-dot, .count-bump { animation: none; }
+}
+
+/* ---- browser extension --------------------------------------------------- */
+.ext-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 34px; align-items: start; }
+
+.ext-step { display: flex; gap: 14px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+.ext-step:last-of-type { border-bottom: 0; }
+.ext-n {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  font-family: var(--font-mono);
+  font-size: 11.6px;
+  color: var(--accent-2);
+  background: rgba(25, 217, 198, .1);
+  border: 1px solid rgba(25, 217, 198, .26);
+}
+.ext-step p { margin: 2px 0 0; color: var(--text-dim); font-size: 14.4px; }
+.ext-note { margin: 14px 0 0; color: var(--text-faint); font-size: 13px; }
+
+.ext-card {
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--lift);
+}
+.ext-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 14px;
+  background: var(--ink-1);
+  border-bottom: 1px solid var(--line);
+}
+.ext-url {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 11.4px;
+  color: var(--text-faint);
+}
+.ext-stage { padding: 20px; }
+.ext-video {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r-md);
+  background: linear-gradient(135deg, #101a2b, #0a1119);
+  border: 1px solid var(--line);
+}
+.ext-play { color: var(--line-2); }
+/* The button the extension injects, drawn where it actually appears. It draws
+   attention on a loop because that is the moment the section is describing. */
+.ext-btn {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: var(--r-pill);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--on-accent);
+  background: linear-gradient(100deg, var(--accent-2), var(--accent));
+  box-shadow: var(--glow);
+  animation: extPop 3.6s ease-in-out infinite;
+}
+@keyframes extPop {
+  0%, 62%, 100% { transform: translateY(0) scale(1); }
+  70%           { transform: translateY(-3px) scale(1.045); }
+  78%           { transform: translateY(0) scale(1); }
+}
+.ext-caption { margin-top: 13px; font-size: 12.6px; color: var(--text-faint); text-align: center; }
+
+@media (max-width: 900px) { .ext-grid { grid-template-columns: 1fr; gap: 26px; } }
+@media (prefers-reduced-motion: reduce) { .ext-btn { animation: none; } }
+
+
+/* ---- pricing tiers, published from the licence admin panel ------------- */
+.plan-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.buy-card.plan-card { position: relative; }
+.buy-card.plan-card.featured { border-color: var(--accent, #4f9fff); }
+.plan-badge {
+  position: absolute;
+  top: -10px;
+  left: 18px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent, #4f9fff);
+  color: #06121f;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.plan-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.plan-devices { font-size: 13px; color: var(--accent, #4f9fff); font-weight: 600; margin-top: 4px; }
+.plan-list {
+  margin: 14px 0 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  color: var(--text-dim, #98a3bd);
+}
+.plan-list li { margin: 4px 0; }
+
+@media (max-width: 720px) {
+  .plan-cards { grid-template-columns: 1fr; }
+}

@@ -21,35 +21,40 @@ async function get(path) {
 
 export const api = {
   content: () => get('/api/store/content'),
+  // The pricing tiers, straight from the licence server's admin panel — the
+  // same list the desktop app shows, so a price is edited in one place only.
+  plans: () => get('/api/plans'),
   stats: () => get('/api/store/stats'),
   countDownload: () => post('/api/store/downloads'),
 
-  createOrder: (email) => post('/api/store/orders', { email }),
-  captureOrder: (orderId) => post('/api/store/orders/capture', { orderId }),
+  // PayHere: we ask the server to sign a checkout, then post the browser to it.
+  startCheckout: (email) => post('/api/store/payhere/start', { email }),
+  checkoutResult: (orderId) => post('/api/store/payhere/result', { orderId }),
 
   adminLogin: (password) => post('/api/store/admin/login', { password }),
   adminCheck: (token) => post('/api/store/admin/check', { token }),
   adminLogout: (token) => post('/api/store/admin/logout', { token }),
   adminSave: (token, content) => post('/api/store/admin/content', { token, content }),
+  adminSetDownloads: (token, downloads) => post('/api/store/admin/downloads', { token, downloads }),
   adminOrders: (token) => post('/api/store/admin/orders', { token }),
 };
 
-// Load the PayPal SDK once, on demand. It is only fetched when a visitor
-// actually reaches the checkout, so it costs the landing page nothing.
-let paypalPromise = null;
-export function loadPayPal(clientId, currency) {
-  if (paypalPromise) return paypalPromise;
-  paypalPromise = new Promise((resolve, reject) => {
-    if (window.paypal) return resolve(window.paypal);
-    const s = document.createElement('script');
-    s.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=${encodeURIComponent(currency || 'USD')}&intent=capture`;
-    s.onload = () => (window.paypal ? resolve(window.paypal) : reject(new Error('PayPal SDK did not load')));
-    s.onerror = () => reject(new Error('Could not reach PayPal'));
-    document.head.appendChild(s);
-  });
-  return paypalPromise;
+// PayHere needs no SDK: checkout is a signed form post, so there is no
+// third-party script on the page at all.
+export function submitCheckout(action, fields) {
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = action;
+  for (const [k, v] of Object.entries(fields)) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = k;
+    input.value = v == null ? '' : String(v);
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
 }
-
 // "Windows" / "macOS" / "Linux" - used for the nav badge and the hero button.
 export function detectOS() {
   const p = (navigator.userAgent || '').toLowerCase();

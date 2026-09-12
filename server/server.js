@@ -411,6 +411,21 @@ const activateLimit = limited(60 * 1000, Math.max(1, parseInt(process.env.VELOX_
 const heartbeatLimit = limited(60 * 1000, Math.max(1, parseInt(process.env.VELOX_HEARTBEAT_PER_MIN || '30', 10)),
   'Too many requests. Please wait a minute.');
 
+// The published pricing table, open to anyone.
+//
+// The app receives this on its heartbeat, but the website needs the same three
+// tiers and a visitor has no licence to authenticate with — so this one is
+// public. It carries only what an admin ticked Published, which is exactly
+// what the site exists to show. nginx on the store vhost proxies /api/plans
+// here so the page can fetch it same-origin.
+//
+// Deliberately not rate-limited: behind that proxy every request arrives from
+// 127.0.0.1, so a per-IP limiter would throttle every visitor at once.
+app.get('/api/plans', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=60');
+  res.json(ok({ plans: publicPlans() }));
+});
+
 app.post('/api/signup', signupLimit, (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const deviceId = String(req.body?.deviceId || '').trim();
