@@ -172,13 +172,27 @@ function Login({ onIn }) {
 
 /* ----------------------------------------------------------------- fields */
 
-function Text({ c, set, path, label, area }) {
+function Text({ c, set, path, label, area, placeholder, warnIfLink }) {
   const value = getIn(c, path) ?? '';
   const Tag = area ? 'textarea' : 'input';
+  // A link pasted into a title is the mistake worth catching: it is silent —
+  // the page renders, it just renders a URL where a heading should be.
+  const looksLikeLink = warnIfLink && /^https?:\/\//i.test(String(value).trim());
   return (
     <div>
       <label className="flabel">{label}</label>
-      <Tag className="field" value={value} onChange={(e) => set(path, e.target.value)} />
+      <Tag
+        className={'field' + (looksLikeLink ? ' field-warn' : '')}
+        value={value}
+        placeholder={placeholder || ''}
+        onChange={(e) => set(path, e.target.value)}
+      />
+      {looksLikeLink ? (
+        <p className="hint warn">
+          That is a link, and this box is the wording shown on the page. Video links
+          go in a guide's <b>YouTube link</b> box below.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -215,9 +229,11 @@ function List({ c, set, path, label, hint, fields, blank, tag }) {
             <div key={f.key} style={{ marginBottom: 9 }}>
               <label className="flabel">{f.label}</label>
               {f.area ? (
-                <textarea className="field" value={item[f.key] ?? ''} onChange={(e) => update(i, f.key, e.target.value)} />
+                <textarea className="field" placeholder={f.placeholder || ''} value={item[f.key] ?? ''}
+                  onChange={(e) => update(i, f.key, e.target.value)} />
               ) : (
-                <input className="field" value={item[f.key] ?? ''} onChange={(e) => update(i, f.key, e.target.value)} />
+                <input className="field" placeholder={f.placeholder || ''} value={item[f.key] ?? ''}
+                  onChange={(e) => update(i, f.key, e.target.value)} />
               )}
             </div>
           ))}
@@ -443,24 +459,27 @@ function Editor({ token, onSignOut }) {
             <div className="admin-card">
               <h3>Help Center</h3>
               <p className="hint">
-                The page at /help, which the app's Get help button opens. Each guide shows a picture or a
-                YouTube video — fill in whichever you have; the video brings its own
-                thumbnail, so a guide with a video needs no image at all.
+                The page at <b>/help</b>, which the app's Get help button opens. These two
+                boxes are only the wording at the top of that page — the guides themselves,
+                with their videos, are in <b>Help articles</b> below.
               </p>
               <div className="row">
-                <Text c={c} set={set} path={['help', 'heading']} label="Heading" />
-                <Text c={c} set={set} path={['help', 'sub']} label="Sub-heading" />
+                <Text c={c} set={set} path={['help', 'heading']} label="Page title"
+                  placeholder="Help Center" warnIfLink />
+                <Text c={c} set={set} path={['help', 'sub']} label="Line under the title"
+                  placeholder="Short answers to the things people ask most." warnIfLink />
               </div>
             </div>
 
             <List c={c} set={set} path={['help', 'articles']} label="Help articles"
-              hint="Paste any YouTube link — a watch URL, a share link, an embed or a short all work."
+              hint="One guide per row. Paste a link to a single video — a watch URL, a share link, an embed or a short all work. A channel or playlist link is not a video and will show nothing."
               tag={(item) => item.title || 'Untitled'}
               blank={{ title: '', description: '', image: '', video: '' }}
               fields={[
-                { key: 'title', label: 'Title' },
-                { key: 'description', label: 'Description', area: true },
-                { key: 'video', label: 'YouTube link (optional)' },
+                { key: 'title', label: 'Title', placeholder: 'How do I activate Velox?' },
+                { key: 'description', label: 'Description', area: true,
+                  placeholder: 'A few sentences answering it.' },
+                { key: 'video', label: 'YouTube link to one video (optional)' },
                 { key: 'image', label: 'Image URL (used when there is no video)' },
               ]} />
 

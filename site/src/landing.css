@@ -822,3 +822,8 @@ table.cmp td { color: var(--text-dim); }
 @media (max-width: 900px) {
   .pricing-plans { grid-template-columns: 1fr; }
 }
+
+
+/* A box holding something it plainly should not. */
+.field-warn { border-color: #fcd34d !important; }
+.hint.warn { color: #fcd34d; }
