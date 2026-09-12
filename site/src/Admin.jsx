@@ -443,7 +443,7 @@ function Editor({ token, onSignOut }) {
             <div className="admin-card">
               <h3>Help Center</h3>
               <p className="hint">
-                What the app's Get help button opens. Each guide shows a picture or a
+                The page at /help, which the app's Get help button opens. Each guide shows a picture or a
                 YouTube video — fill in whichever you have; the video brings its own
                 thumbnail, so a guide with a video needs no image at all.
               </p>

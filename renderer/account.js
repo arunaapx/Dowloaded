@@ -13,7 +13,7 @@
   // Falls back to the store's own help anchor, so the button still goes
   // somewhere useful before the first heartbeat has answered.
   const helpUrl = () =>
-    current.helpUrl || (current.storeUrl ? current.storeUrl.replace(/\/+$/, '') + '/#help' : '');
+    current.helpUrl || (current.storeUrl ? current.storeUrl.replace(/\/+$/, '') + '/help' : '');
 
   // ---- small helpers -------------------------------------------------------
 

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, detectOS } from './api.js';
-import { youtubeId, youtubeThumb, youtubeEmbed } from './youtube.js';
 
 /* ---------------------------------------------------------------- content
    Everything here can be overridden by the store's /content endpoint, which is
@@ -188,7 +187,6 @@ export default function App() {
         <Sites c={content} />
         <Extension c={content} />
         <Pricing c={content} stats={stats} plans={plans} />
-        <Help c={content} />
         <Faq c={content} />
       </main>
       <Footer c={content} />
@@ -215,7 +213,7 @@ function Nav({ c, os }) {
     { label: 'How it works', href: '#how' },
     { label: 'Sites', href: '#sites' },
     { label: 'Extension', href: '#extension' },
-    { label: 'Help', href: '#help' },
+    { label: 'Help', href: '/help' },
     { label: 'Pricing', href: '#pricing' },
   ];
 
@@ -234,6 +232,7 @@ function Nav({ c, os }) {
         </nav>
         <div className="nav-right">
           <span className="os-badge">v{brand.version || FALLBACK.version} for {os}</span>
+          <a className="btn ghost sm" href="/help">Get help</a>
           <a className="btn primary sm" href="#pricing">{nav.cta || 'Get Velox'}</a>
         </div>
       </div>
@@ -576,7 +575,9 @@ function Pricing({ c, stats, plans = [] }) {
           <p>{p.sub || 'The free version is the whole app with a download limit, not a crippled demo.'}</p>
         </Reveal>
 
-        <div className="pricing-wrap">
+        {plans.length ? <PlanCards plans={plans} p={p} /> : null}
+
+        <div className={plans.length ? 'pricing-wrap single' : 'pricing-wrap'}>
           <Reveal className="compare-scroll">
             <table className="cmp">
               <thead>
@@ -597,7 +598,7 @@ function Pricing({ c, stats, plans = [] }) {
               </tbody>
             </table>
           </Reveal>
-          {plans.length ? <PlanCards plans={plans} p={p} /> : <BuyCard p={p} />}
+          {plans.length ? null : <BuyCard p={p} />}
         </div>
       </div>
     </section>
@@ -609,7 +610,7 @@ function Pricing({ c, stats, plans = [] }) {
    the pricing to keep in step. */
 function PlanCards({ plans, p }) {
   return (
-    <div className="plan-cards">
+    <div className="plan-cards pricing-plans">
       {plans.map((plan) => (
         <PlanCard key={plan.id} plan={plan} p={p} />
       ))}
@@ -637,11 +638,9 @@ function PlanCard({ plan, p }) {
       </div>
       <div className="plan-devices">{devices} device{devices === 1 ? '' : 's'}</div>
 
-      {plan.features && plan.features.length ? (
-        <ul className="plan-list">
-          {plan.features.map((f, i) => <li key={i}>{f}</li>)}
-        </ul>
-      ) : null}
+      <ul className="plan-list">
+        {(plan.features || []).map((f, i) => <li key={i}>{f}</li>)}
+      </ul>
 
       <a className="btn primary wide" href={href} target="_blank" rel="noreferrer" style={{ marginTop: 16 }}>
         {plan.buyUrl ? 'Buy now' : <><WhatsAppGlyph />Buy on WhatsApp</>}
@@ -684,134 +683,6 @@ function BuyCard({ p }) {
         WhatsApp <b style={{ color: 'var(--text-dim)' }}>074 092 0915</b>
       </p>
     </aside>
-  );
-}
-
-/* ------------------------------------------------------------------- help */
-
-// The guides a brand-new install shows, so the help centre is useful the
-// moment it goes up rather than empty until someone writes something. The
-// admin panel overrides all of it; the first edit saves the whole section.
-const HELP_FALLBACK = {
-  heading: 'Help Center',
-  sub: 'Short answers to the things people ask most. Every guide takes a minute.',
-  articles: [
-    {
-      title: 'Activating Velox on your PC',
-      description:
-        'Enter your email twice, tick the box, and the key arrives in your inbox. The licence locks to this computer, so use the machine you will actually download on.',
-      image: '',
-      video: '',
-    },
-    {
-      title: 'Why my key will not work on a second computer',
-      description:
-        "A licence is tied to one machine's hardware. Reinstalling Windows or the app is fine — the same PC stays the same PC. A new motherboard counts as a new machine; message us and we will move it across.",
-      image: '',
-      video: '',
-    },
-    {
-      title: 'Downloading a whole playlist',
-      description:
-        'Paste the playlist link, or search and press Open playlist. Pick the episodes you want, choose video or MP3, and each one is queued as its own download with its own progress.',
-      image: '',
-      video: '',
-    },
-    {
-      title: 'Torrents: picking files before they download',
-      description:
-        'Add a magnet or a .torrent file and Velox reads the file list first. Tick only what you want — language packs and extras can stay behind — then press Start download.',
-      image: '',
-      video: '',
-    },
-  ],
-};
-
-function Help({ c }) {
-  const help = c.help && (c.help.articles || c.help.heading) ? c.help : HELP_FALLBACK;
-  const articles = (help.articles || []).filter((a) => a && a.title);
-  const [open, setOpen] = useState(null);
-
-  // Escape closes, and the page behind stops scrolling while a guide is open.
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(null); };
-    document.addEventListener('keydown', onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previous;
-    };
-  }, [open]);
-
-  if (!articles.length) return null;
-
-  return (
-    <section className="section" id="help">
-      <div className="wrap">
-        <Reveal className="section-head">
-          <div className="eyebrow">Help</div>
-          <h2>{help.heading || HELP_FALLBACK.heading}</h2>
-          <p>{help.sub || HELP_FALLBACK.sub}</p>
-        </Reveal>
-
-        <div className="help-grid">
-          {articles.map((a, i) => {
-            const vid = youtubeId(a.video);
-            // A video brings its own picture, so a guide looks finished without
-            // anyone having to make artwork for it.
-            const thumb = a.image || youtubeThumb(vid);
-            return (
-              <Reveal key={i}>
-                <button type="button" className="help-card" onClick={() => setOpen(a)}>
-                  {thumb ? (
-                    <span className="help-thumb">
-                      <img src={thumb} alt="" loading="lazy" />
-                      {vid ? <span className="help-play" aria-hidden="true">▶</span> : null}
-                    </span>
-                  ) : null}
-                  <span className="help-text">
-                    <span className="help-title">{a.title}</span>
-                    <span className="help-desc">{a.description}</span>
-                  </span>
-                </button>
-              </Reveal>
-            );
-          })}
-        </div>
-      </div>
-
-      {open ? <HelpArticle article={open} onClose={() => setOpen(null)} /> : null}
-    </section>
-  );
-}
-
-function HelpArticle({ article, onClose }) {
-  const vid = youtubeId(article.video);
-  return (
-    <div className="help-modal" onClick={onClose} role="dialog" aria-modal="true" aria-label={article.title}>
-      <div className="help-modal-card" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="help-close" onClick={onClose} aria-label="Close">×</button>
-        <h3>{article.title}</h3>
-
-        {vid ? (
-          <div className="help-video">
-            <iframe
-              src={youtubeEmbed(vid)}
-              title={article.title}
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
-        ) : article.image ? (
-          <img className="help-image" src={article.image} alt="" />
-        ) : null}
-
-        {article.description ? <p className="help-body">{article.description}</p> : null}
-      </div>
-    </div>
   );
 }
 

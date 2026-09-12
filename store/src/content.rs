@@ -35,7 +35,7 @@ pub fn default_content() -> Value {
                 { "label": "How It Works", "href": "#how" },
                 { "label": "Extension", "href": "#extension" },
                 { "label": "Pricing", "href": "#pricing" },
-                { "label": "Help", "href": "#help" },
+                { "label": "Help", "href": "/help" },
                 { "label": "FAQ", "href": "#faq" }
             ],
             "cta": "Download Free"

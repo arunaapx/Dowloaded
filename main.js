@@ -47,7 +47,7 @@ const STORE_URL = process.env.VELOX_STORE_URL || 'https://veloxdownloader.prolan
 
 // Where Get help goes. The guides live on the site because an answer can be
 // published there while someone is still stuck — the app would need a release.
-const HELP_URL = process.env.VELOX_HELP_URL || STORE_URL.replace(/\/+$/, '') + '/#help';
+const HELP_URL = process.env.VELOX_HELP_URL || STORE_URL.replace(/\/+$/, '') + '/help';
 
 // Windows names a notification after the app's user-model id, and Electron's
 // default is its own — which is why every toast this app raised said

@@ -749,3 +749,76 @@ table.cmp td { color: var(--text-dim); }
 .help-video iframe { width: 100%; height: 100%; border: 0; }
 .help-image { width: 100%; border-radius: 10px; display: block; }
 .help-body { margin: 14px 0 0; font-size: 14.5px; line-height: 1.65; color: var(--text-dim, #98a3bd); white-space: pre-wrap; }
+
+
+/* ---- the help centre as its own page ------------------------------------
+   Someone who arrives here clicked Get help: they are stuck, not shopping. So
+   the page opens on the guides, with no hero and nothing to scroll past. */
+.help-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 14px 0;
+  background: rgba(8, 11, 18, 0.86);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line, #1e2739);
+}
+.help-header-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.help-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 15px;
+  color: inherit;
+  text-decoration: none;
+}
+.help-logo {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accent, #4f9fff);
+  color: #06121f;
+  font-weight: 800;
+}
+.help-nav { display: flex; gap: 18px; font-size: 14px; }
+.help-nav a { color: var(--text-dim, #98a3bd); text-decoration: none; }
+.help-nav a:hover { color: var(--text, #e8eefc); }
+
+.help-page { padding: 42px 0 70px; }
+.help-head { max-width: 640px; margin-bottom: 26px; }
+.help-head h1 { margin: 8px 0 10px; font-size: 34px; line-height: 1.15; }
+.help-head p { margin: 0; color: var(--text-dim, #98a3bd); font-size: 15px; line-height: 1.6; }
+.help-foot {
+  margin-top: 34px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line, #1e2739);
+  color: var(--text-dim, #98a3bd);
+  font-size: 14px;
+}
+
+
+/* ---- pricing tiers, full width -------------------------------------------
+   Three cards in the narrow column beside the comparison table wrapped into a
+   broken grid, with the third orphaned below the other two. The tiers are what
+   the section is for, so they take the full width and come first. */
+.pricing-plans {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-items: stretch;
+  margin-bottom: 22px;
+}
+.pricing-plans .plan-card { display: flex; flex-direction: column; height: 100%; }
+/* The feature list takes the slack, so every Buy button lands on the same line
+   however many features a tier lists. */
+.pricing-plans .plan-list { flex: 1 1 auto; }
+.pricing-plans .plan-card .btn { margin-top: auto; }
+.pricing-plans .plan-card p:last-child { margin-bottom: 0; }
+
+/* With the tiers above it, the table has the row to itself. */
+.pricing-wrap.single { grid-template-columns: minmax(0, 1fr); }
+
+@media (max-width: 900px) {
+  .pricing-plans { grid-template-columns: 1fr; }
+}
