@@ -1,6 +1,6 @@
 {
   "name": "velox-downloader",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "description": "Velox Downloader — licensed desktop app for YouTube, Facebook, TikTok, Instagram, and 1000+ sites. Server-gated extraction, device-side download.",
   "main": "main.js",
   "scripts": {
