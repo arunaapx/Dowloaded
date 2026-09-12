@@ -150,6 +150,29 @@ function verifyPackagedApp() {
     );
   }
   ok('packaged app has everything it needs to boot');
+
+  // The engine and its helpers are extraResources, not asar contents, so
+  // nothing above would notice if the build block stopped copying them — and
+  // the app would ship unable to download anything at all. The engine is also
+  // renamed on the way in (scripts/brand-engine.js), which is exactly the kind
+  // of thing that breaks quietly.
+  const binDir = path.join(DIST, 'win-unpacked', 'resources', 'bin');
+  const needed = ['velox-core.exe', '_internal', 'ffmpeg.exe', 'ffprobe.exe'];
+  const absent = needed.filter((f) => !fs.existsSync(path.join(binDir, f)));
+  if (absent.length) {
+    die(
+      'resources/bin is missing ' + absent.join(', '),
+      'Check build.extraResources in package.json, and that `npm run prebuild`\n' +
+      'produced bin/velox-core.exe.'
+    );
+  }
+  if (fs.existsSync(path.join(binDir, 'yt-dlp.exe'))) {
+    die(
+      'resources/bin still ships yt-dlp.exe',
+      'The engine goes out under the product name. Check build.extraResources.'
+    );
+  }
+  ok('the engine ships under its own name, with everything it needs');
 }
 
 // ---------------------------------------------------------------------------
