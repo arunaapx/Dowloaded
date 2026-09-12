@@ -118,11 +118,54 @@
       frag.appendChild(row);
     }
     els.list.appendChild(frag);
+    setBusy(false);
     refresh();
   }
 
+  // Opening the picker before the index has been read, so the click has an
+  // answer immediately. Reading a forty-episode playlist takes several
+  // seconds, and the only feedback used to be the Start button's label — which
+  // is on another tab when the playlist was opened from search results. From
+  // there the click looked like it had done nothing at all.
+  function showLoading(title) {
+    els.title.textContent = title || 'Playlist';
+    els.sub.textContent = 'Reading…';
+    els.list.innerHTML = '';
+    const box = document.createElement('div');
+    box.className = 'pl-loading';
+    const spinner = document.createElement('span');
+    spinner.className = 'pl-spinner';
+    const text = document.createElement('span');
+    text.textContent = 'Reading the playlist — a long one can take a few seconds.';
+    box.append(spinner, text);
+    els.list.appendChild(box);
+    setBusy(true);
+    open();
+  }
+
+  // Why it could not be read, in the window the user is already looking at,
+  // rather than a click that quietly does nothing.
+  function showFailure(message) {
+    els.sub.textContent = '';
+    els.list.innerHTML = '';
+    const box = document.createElement('div');
+    box.className = 'pl-loading failed';
+    box.textContent = message;
+    els.list.appendChild(box);
+    setBusy(true);
+    open();
+  }
+
+  // Hides the parts that mean nothing yet — the range tools, the two download
+  // buttons — and leaves Cancel, so there is always a way out.
+  function setBusy(on) {
+    modal.classList.toggle('loading', !!on);
+    [els.video, els.audio, els.all, els.applyRange, els.from, els.to, els.ownFolder]
+      .forEach((el) => { if (el) el.disabled = !!on; });
+  }
+
   function open() { modal.classList.remove('hidden'); }
-  function close() { modal.classList.add('hidden'); current = null; }
+  function close() { modal.classList.add('hidden'); setBusy(false); current = null; }
 
   function applyRange() {
     const from = Math.max(1, parseInt(els.from.value, 10) || 1);
@@ -189,15 +232,25 @@
 
   // Called by the Start button before it queues anything. Returns true when the
   // picker took over, false when this is an ordinary single video.
-  window.maybeOpenPlaylist = async function maybeOpenPlaylist(url) {
+  // `opts.loader` opens the picker in its reading state first. The Start
+  // button flow leaves it off on purpose: a link there may well turn out to be
+  // an ordinary video, and a window that flashes open and shut is worse than
+  // no window. A caller that already knows it has a playlist — the search
+  // results — turns it on, and then a failure is shown there instead of
+  // falling through silently.
+  window.maybeOpenPlaylist = async function maybeOpenPlaylist(url, opts = {}) {
     if (!looksLikePlaylist(url) || !window.api?.playlistInfo) return false;
 
     const btn = document.getElementById('startBtn');
     const label = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = 'Reading playlist…'; }
+    if (opts.loader) showLoading(opts.title);
     try {
       const info = await window.api.playlistInfo(url, 200);
-      if (!info || !info.ok || !info.isPlaylist || !info.entries || !info.entries.length) return false;
+      if (!info || !info.ok || !info.isPlaylist || !info.entries || !info.entries.length) {
+        if (opts.loader) showFailure('This playlist could not be read. It may be private, empty, or no longer there.');
+        return false;
+      }
       // A link that carries both a video id and a list is usually someone
       // sharing one video from a playlist, so offer the choice rather than
       // assuming the whole list.
@@ -205,6 +258,7 @@
       open();
       return true;
     } catch {
+      if (opts.loader) showFailure('This playlist could not be read. Check your connection and try again.');
       return false;                              // fall through to a normal download
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = label; }

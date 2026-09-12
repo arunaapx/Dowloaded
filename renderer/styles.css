@@ -2512,3 +2512,36 @@ body.light {
   font-weight: 600;
   margin-top: -4px;
 }
+
+
+/* ---- playlist picker: the seconds spent reading the index ---------------- */
+#playlistModal.loading .playlist-tools,
+#playlistModal.loading #playlistVideo,
+#playlistModal.loading #playlistAudio,
+#playlistModal.loading #playlistPicked { display: none; }
+
+.pl-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 180px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13.5px;
+}
+.pl-loading.failed { color: var(--text); }
+.pl-spinner {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: pl-spin 0.7s linear infinite;
+}
+@keyframes pl-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .pl-spinner { animation-duration: 2.4s; }
+}

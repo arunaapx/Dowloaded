@@ -445,7 +445,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (r.isPlaylist) {
       const open = () => {
-        if (typeof maybeOpenPlaylist === 'function') maybeOpenPlaylist(r.url);
+        // The picker opens straight away in its reading state: the Start
+        // button's label is the only other feedback there is, and it is on a
+        // different tab from here.
+        if (typeof maybeOpenPlaylist === 'function') maybeOpenPlaylist(r.url, { loader: true, title: r.title });
       };
       div.querySelector('.open-playlist').addEventListener('click', open);
       div.querySelector('.res-open').addEventListener('click', open);
