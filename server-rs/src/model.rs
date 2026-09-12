@@ -573,13 +573,18 @@ pub fn email_ok(v: &str) -> bool {
 
 /// Enough for the real owner to recognise their own address, not enough to leak
 /// a stranger's to whoever is sitting at the machine.
+///
+/// The number of stars follows the length of the name, which is what the Node
+/// server does and therefore what the message on screen has always looked like.
 pub fn mask_email(v: &str) -> String {
-    let (local, domain) = match v.split_once('@') {
-        Some(parts) => parts,
-        None => return "***".into(),
-    };
+    let at = v.find('@').unwrap_or(0);
+    if at < 1 {
+        return "another account".into();
+    }
+    let (local, domain) = (&v[..at], &v[at + 1..]);
     let head: String = local.chars().take(2).collect();
-    format!("{head}***@{domain}")
+    let stars = "*".repeat((local.chars().count() - head.chars().count()).max(1));
+    format!("{head}{stars}@{domain}")
 }
 
 pub fn log_event(db: &Db, kind: &str, key: Option<&str>, ip: &str, detail: &str) {

@@ -80,10 +80,19 @@ function finish(code) {
 }
 
 (async () => {
-  // wait for it to listen
-  for (let i = 0; i < 100; i++) {
-    try { const r = await fetch(BASE + '/healthz'); if (r.ok) break; } catch {}
-    await wait(100);
+  // Wait for it to listen. Thirty seconds, because a cold start on a loaded
+  // machine (a Rust build in the next terminal) can take more than ten - and a
+  // suite that gives up early reports every check as a failure, which reads like
+  // thirty bugs instead of one slow start.
+  let up = false;
+  for (let i = 0; i < 300 && !up; i++) {
+    try { up = (await fetch(BASE + '/healthz')).ok; } catch {}
+    if (!up) await wait(100);
+  }
+  if (!up) {
+    console.log(`FAIL  the server never came up on ${BASE}`);
+    if (serverLog.trim()) console.log(serverLog.split(/\r?\n/).slice(-15).join('\n'));
+    return finish(1);
   }
 
   // --- admin session ---

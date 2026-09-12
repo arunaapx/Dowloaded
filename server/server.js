@@ -649,7 +649,7 @@ app.post('/api/heartbeat', heartbeatLimit, (req, res) => {
 });
 
 // --- license-gated extraction API (thin-client model) ---
-app.use('/api', createExtractRouter({ jwt, JWT_SECRET, stmts, licenseState, logEvent, getIp, settings }));
+app.use('/api', createExtractRouter({ jwt, JWT_SECRET, stmts, licenseState, logEvent, getIp, settings, boundDeviceIds }));
 
 // --- internal API (loopback only) ---
 //

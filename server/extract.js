@@ -13,7 +13,7 @@ const { probe, resolveStreams, search, listExtractors } = require('../core/extra
 const usage = require('./usage');
 
 module.exports = function createExtractRouter(deps) {
-  const { jwt, JWT_SECRET, stmts, licenseState, logEvent, getIp } = deps;
+  const { jwt, JWT_SECRET, stmts, licenseState, logEvent, getIp, boundDeviceIds } = deps;
   // Read the cap through the shared settings getter so changing it in the admin
   // panel takes effect immediately, without restarting the server.
   const trialCap = () => (deps.settings ? deps.settings().trialDownloads : TRIAL_DOWNLOADS);
@@ -53,7 +53,15 @@ module.exports = function createExtractRouter(deps) {
     if (state !== 'active') {
       return res.status(403).json({ ok: false, error: `license ${state}`, [state]: true });
     }
-    if (row.device_id && payload.deviceId !== row.device_id) {
+    // Membership, not identity — the same test the heartbeat applies.
+    //
+    // This used to compare the token against the key's *primary* machine, which
+    // meant a customer on a two- or three-device plan could activate their second
+    // PC, pass the heartbeat on it, and then have every download refused with
+    // "device mismatch". The device allowance is the thing the plans are sold on,
+    // so the gate has to honour it.
+    const bound = boundDeviceIds ? boundDeviceIds(row) : [row.device_id].filter(Boolean);
+    if (payload.deviceId && bound.length && !bound.includes(payload.deviceId)) {
       return res.status(409).json({ ok: false, error: 'device mismatch' });
     }
     req.license = { key: payload.key, deviceId: payload.deviceId };

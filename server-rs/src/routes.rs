@@ -107,9 +107,14 @@ fn account_payload(state: &AppState, key: &Key) -> Value {
 }
 
 /// A key that cannot be used, and why — in the words the app already shows.
+///
+/// The flags are not the same at every door, and that is deliberate rather than
+/// untidy: the app's lock screen reads them, and it was written against these
+/// exact bodies. `revoked` is only sent on the heartbeat, because that is the
+/// one the running app polls; sign-up and activation say it in the message.
 fn refuse_state(state_of: model::State) -> Option<(StatusCode, Value)> {
     match state_of {
-        model::State::Revoked => Some((StatusCode::FORBIDDEN, json!({ "error": "key revoked", "revoked": true }))),
+        model::State::Revoked => Some((StatusCode::FORBIDDEN, json!({ "error": "key revoked" }))),
         model::State::Blocked => Some((StatusCode::FORBIDDEN, json!({ "error": "user blocked", "blocked": true }))),
         model::State::Expired => Some((StatusCode::FORBIDDEN, json!({ "error": "license expired", "expired": true }))),
         _ => None,
@@ -400,17 +405,31 @@ async fn heartbeat(
         None => return error(StatusCode::NOT_FOUND, "unknown key"),
     };
 
-    // A refused licence still carries the pricing and the notices: someone
-    // whose licence just expired is the one person most worth making an offer
-    // to, and the lock screen is the only surface they can act on.
-    if let Some((status, mut body)) = refuse_state(model::state_of(&row)) {
-        model::log_event(&state.db, "heartbeat-refused", Some(&row.key), &ip, &claims.device_id);
-        let trial_left = model::trial_remaining(&state.db, &row, settings(&state).trial_downloads);
-        if let Some(map) = body.as_object_mut() {
-            map.insert("plans".into(), json!(model::public_plans(&state.db)));
-            map.insert("notices".into(), json!(model::notices_for(&state.db, &row, trial_left)));
+    // Only these three are a refusal. A key that was issued and never used on a
+    // machine is Pending, and belongs in the membership check further down - it is
+    // not expired, and telling its owner it was would send them to the shop to buy
+    // a licence they already hold.
+    let refusal = match model::state_of(&row) {
+        model::State::Revoked => Some(("heartbeat-revoked", json!({ "error": "key revoked", "revoked": true }), false)),
+        model::State::Blocked => Some(("heartbeat-blocked", json!({ "error": "user blocked", "blocked": true }), false)),
+        model::State::Expired => Some(("heartbeat-expired", json!({ "error": "license expired", "expired": true }), true)),
+        _ => None,
+    };
+    if let Some((kind, mut body, offer)) = refusal {
+        model::log_event(&state.db, kind, Some(&row.key), &ip, &claims.device_id);
+        // An expired licence — and only an expired one — is sent the pricing and
+        // the notices with the refusal. Someone whose subscription just ran out
+        // is the person most worth making an offer to, and the lock screen is the
+        // only surface they can act on. A revoked or blocked licence is one
+        // somebody took away on purpose; it gets no sales pitch.
+        if offer {
+            let trial_left = model::trial_remaining(&state.db, &row, settings(&state).trial_downloads);
+            if let Some(map) = body.as_object_mut() {
+                map.insert("plans".into(), json!(model::public_plans(&state.db)));
+                map.insert("notices".into(), json!(model::notices_for(&state.db, &row, trial_left)));
+            }
         }
-        return fail(status, body);
+        return fail(StatusCode::FORBIDDEN, body);
     }
 
     // Membership, not identity: a key may legitimately run on several machines,
@@ -479,13 +498,28 @@ fn bearer(headers: &HeaderMap) -> Option<&str> {
     headers.get(axum::http::header::AUTHORIZATION).and_then(|v| v.to_str().ok())
 }
 
-/// The first two gates, which every gated route needs.
+/// The first two gates, which every gated route needs, plus the burst limit in
+/// front of them.
+///
+/// The daily cap is about one licence being resold; this is about one address
+/// hammering the extractor, which costs the server real work per request whether
+/// the licence is honest or not.
 fn admit(
     state: &AppState,
     headers: &HeaderMap,
     token: Option<&String>,
 ) -> Result<(gate::Licence, String), (StatusCode, Json<Value>)> {
     let ip = client_ip(headers);
+    if let Err(minutes) = state.limits.extract.check(&ip, state.limits.extract_max) {
+        return Err(fail(
+            StatusCode::TOO_MANY_REQUESTS,
+            json!({
+                "error": "Too many requests. Please wait a minute.",
+                "rateLimited": true,
+                "retryAfterMinutes": minutes,
+            }),
+        ));
+    }
     let licence = gate::require_licence(state, bearer(headers), token.map(String::as_str))?;
     gate::enforce_daily_cap(state, &licence, &ip)?;
     Ok((licence, ip))

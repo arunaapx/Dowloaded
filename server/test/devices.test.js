@@ -75,9 +75,16 @@ function finish(code) {
 }
 
 (async () => {
-  for (let i = 0; i < 100; i++) {
-    try { const r = await fetch(BASE + '/healthz'); if (r.ok) break; } catch {}
-    await wait(100);
+  // Thirty seconds to start. See the note in licensing.test.js: giving up early
+  // turns one slow start into a screenful of failed checks.
+  let up = false;
+  for (let i = 0; i < 300 && !up; i++) {
+    try { up = (await fetch(BASE + '/healthz')).ok; } catch {}
+    if (!up) await wait(100);
+  }
+  if (!up) {
+    console.log(`FAIL  the server never came up on ${BASE}`);
+    return finish(1);
   }
   await call('/api/admin-login', { method: 'POST', body: { username: 'admin', password: ADMIN_PASS } });
 

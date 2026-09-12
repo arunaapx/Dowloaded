@@ -102,6 +102,11 @@ const stmts = {
         expires_at: expires_at || null,
         note: note || null,
         trial: trial ? 1 : 0,
+        // Written here as well as in migrate(), so a key issued today has the
+        // same fields as every other key rather than gaining them on the next
+        // restart.
+        plan: null,
+        device_limit: null,
       };
       scheduleSave();
       return { changes: 1 };

@@ -280,7 +280,14 @@ async fn create_key(State(state): State<Shared>, headers: HeaderMap, body: Optio
         &client_ip(&headers),
         &format!("{} / {} days", if email.is_empty() { "no-email" } else { &email }, if days == 0 { "lifetime".to_string() } else { days.to_string() }),
     );
-    (StatusCode::OK, ok(json!({ "key": key, "expiresAt": expires_at, "keys": keys_payload(&state)["keys"] })))
+
+    // The new key's profile, not the whole table: the panel reloads the table
+    // itself, and this is what it puts on screen to be copied to the customer.
+    let s = settings_now(&state);
+    let profile = model::find_key(&state.db, &key)
+        .map(|row| model::public_profile(&state.db, &row, s.trial_downloads, s.default_device_limit))
+        .unwrap_or(Value::Null);
+    (StatusCode::OK, ok(json!({ "key": key, "expiresAt": expires_at, "profile": profile })))
 }
 
 async fn update_key(
@@ -615,7 +622,7 @@ async fn get_plans(State(state): State<Shared>, headers: HeaderMap) -> Answer {
     if let Err(e) = require_admin(&state, &headers) {
         return e;
     }
-    (StatusCode::OK, ok(json!({ "plans": model::all_plans(&state.db), "periods": PLAN_PERIODS })))
+    (StatusCode::OK, ok(json!({ "plans": model::all_plans(&state.db) })))
 }
 
 async fn post_plans(State(state): State<Shared>, headers: HeaderMap, body: Option<Json<Value>>) -> Answer {

@@ -263,6 +263,15 @@ fn an_address_is_checked_before_a_key_is_spent_on_it() {
 
 #[test]
 fn a_stranger_sees_enough_to_recognise_their_own_address_and_no_more() {
+    // Two letters, then one star per hidden character. The length of the name is
+    // part of what makes someone recognise their own address, and this is the
+    // message the app has always shown.
     assert_eq!(model::mask_email("buyer@example.com"), "bu***@example.com");
-    assert_eq!(model::mask_email("a@example.com"), "a***@example.com");
+    assert_eq!(model::mask_email("someone@example.com"), "so*****@example.com");
+    assert_eq!(model::mask_email("ab@example.com"), "ab*@example.com", "always at least one star");
+    assert_eq!(model::mask_email("a@example.com"), "a*@example.com");
+    // Nothing to mask, so nothing is said. "another account" is the phrase the
+    // message is built around.
+    assert_eq!(model::mask_email("@example.com"), "another account");
+    assert_eq!(model::mask_email("not-an-address"), "another account");
 }

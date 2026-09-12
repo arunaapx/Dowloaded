@@ -51,7 +51,6 @@ struct Cookie {
 
 struct Parsed {
     cookies: Vec<Cookie>,
-    problems: Vec<String>,
 }
 
 impl Jar {
@@ -77,8 +76,12 @@ impl Jar {
     pub fn save(&self, text: &str) -> Result<Value, (String, Vec<String>)> {
         let parsed = parse(text);
         let faults = faults(&parsed);
-        if let Some(first) = faults.first() {
-            return Err((first.clone(), faults));
+        if let Some(first) = faults.first().cloned() {
+            // What is wrong with the contents, in the order it matters. The
+            // parser also notes malformed lines, deliberately left out: "export
+            // in Netscape format" is what the operator has to do about it, and a
+            // line-by-line list on top of that only buries the instruction.
+            return Err((first, faults));
         }
 
         if let Some(dir) = self.file.parent() {
@@ -133,7 +136,6 @@ impl Jar {
 /// convention and part of the domain field, not a comment.
 fn parse(text: &str) -> Parsed {
     let mut cookies = Vec::new();
-    let mut problems: Vec<String> = Vec::new();
 
     for raw in text.lines() {
         let line = raw.trim();
@@ -146,10 +148,8 @@ fn parse(text: &str) -> Parsed {
         let body = raw.trim_end_matches(['\r', '\n']).strip_prefix("#HttpOnly_").unwrap_or(raw);
         let parts: Vec<&str> = body.split('\t').collect();
         if parts.len() < 7 {
-            let note = "a line was not tab-separated into seven fields".to_string();
-            if !problems.contains(&note) {
-                problems.push(note);
-            }
+            // Not a cookie line. Counted by its absence: a file made of these
+            // has no cookies in it, which is what the operator is told.
             continue;
         }
         cookies.push(Cookie {
@@ -161,7 +161,7 @@ fn parse(text: &str) -> Parsed {
         });
     }
 
-    Parsed { cookies, problems }
+    Parsed { cookies }
 }
 
 fn is_google(domain: &str) -> bool {
@@ -220,7 +220,6 @@ fn summarise(parsed: &Parsed) -> Value {
         "domains": domains,
         "expiresAt": soonest.map(iso_from_secs),
         "expiredCount": session.iter().filter(|c| c.expiry > 0 && c.expiry <= now).count(),
-        "parseProblems": parsed.problems,
     })
 }
 

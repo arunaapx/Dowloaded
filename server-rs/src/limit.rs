@@ -69,10 +69,13 @@ pub struct Limits {
     pub signup: Limiter,
     pub activate: Limiter,
     pub heartbeat: Limiter,
+    /// The gated extraction routes, which cost the server real work per request.
+    pub extract: Limiter,
     /// Sign-in attempts per address per 15 minutes.
     pub login_max: i64,
     pub activate_max: i64,
     pub heartbeat_max: i64,
+    pub extract_max: i64,
 }
 
 impl Limits {
@@ -85,9 +88,11 @@ impl Limits {
             signup: Limiter::new(Duration::from_secs(3600)),
             activate: Limiter::new(Duration::from_secs(60)),
             heartbeat: Limiter::new(Duration::from_secs(60)),
+            extract: Limiter::new(Duration::from_secs(60)),
             login_max: num("VELOX_LOGIN_PER_15MIN", 10),
             activate_max: num("VELOX_ACTIVATE_PER_MIN", 10),
             heartbeat_max: num("VELOX_HEARTBEAT_PER_MIN", 30),
+            extract_max: num("VELOX_EXTRACT_PER_MIN", 30),
         }
     }
 }
